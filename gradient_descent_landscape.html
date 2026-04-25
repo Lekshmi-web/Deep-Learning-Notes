@@ -1,0 +1,57 @@
+
+<div style="position:relative;width:100%;height:260px;">
+<canvas id="gdChart" role="img" aria-label="Loss curve showing gradient descent steps rolling downhill to the minimum">Ball rolling down a loss curve, each step reducing the loss toward the minimum.</canvas>
+</div>
+<div style="display:flex;align-items:center;gap:12px;margin-top:10px;flex-wrap:wrap;">
+  <label style="font-size:13px;color:var(--color-text-secondary);">Learning rate</label>
+  <input type="range" min="1" max="10" value="4" step="1" id="lr-slider" style="flex:1;max-width:200px;">
+  <span id="lr-val" style="font-size:13px;font-weight:500;min-width:36px;">0.04</span>
+  <button onclick="sendPrompt('Explain the vanishing gradient problem in deep learning')" style="font-size:12px;padding:4px 12px;border-radius:var(--border-radius-md);border:0.5px solid var(--color-border-secondary);background:transparent;color:var(--color-text-secondary);cursor:pointer;">Vanishing gradients ↗</button>
+</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+function makePath(lr){
+  let w = -2.8, pts = [{x:parseFloat(w.toFixed(2)), y:parseFloat(loss(w).toFixed(3))}];
+  for(let i=0;i<18;i++){
+    const g = grad(w);
+    w = w - lr * g;
+    pts.push({x:parseFloat(w.toFixed(2)), y:parseFloat(loss(w).toFixed(3))});
+    if(Math.abs(g) < 0.01) break;
+  }
+  return pts;
+}
+function loss(w){ return 0.5*w*w + 0.3*Math.sin(3*w) + 0.5; }
+function grad(w){ return w + 0.9*Math.cos(3*w); }
+
+const curveX = [];
+for(let x=-3.5;x<=3;x+=0.05) curveX.push(parseFloat(x.toFixed(2)));
+const curveY = curveX.map(x => parseFloat(loss(x).toFixed(3)));
+
+let chart;
+function draw(lrVal){
+  const path = makePath(lrVal);
+  const ds = [
+    { label:'Loss curve', data: curveX.map((x,i)=>({x,y:curveY[i]})), borderColor:'#534AB7', borderWidth:2.5, pointRadius:0, tension:0.4, fill:false, borderDash:[] },
+    { label:'Descent steps', data: path, borderColor:'#D85A30', borderWidth:2, pointRadius:5, pointBackgroundColor:'#D85A30', tension:0, fill:false, borderDash:[] }
+  ];
+  if(chart){ chart.data.datasets[1].data = path; chart.update(); return; }
+  chart = new Chart(document.getElementById('gdChart'),{
+    type:'line',
+    data:{ datasets: ds },
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ type:'linear', min:-3.5, max:3, title:{display:true,text:'Weight value',color:'#888780'}, ticks:{color:'#888780'}, grid:{color:'rgba(136,135,128,0.12)'} },
+        y:{ min:0, max:5.5, title:{display:true,text:'Loss',color:'#888780'}, ticks:{color:'#888780'}, grid:{color:'rgba(136,135,128,0.12)'} }
+      }
+    }
+  });
+}
+draw(0.04);
+document.getElementById('lr-slider').oninput = function(){
+  const v = (this.value/100).toFixed(2);
+  document.getElementById('lr-val').textContent = v;
+  draw(parseFloat(v));
+};
+</script>
