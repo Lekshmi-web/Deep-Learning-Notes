@@ -1,0 +1,1045 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RNN & LSTM — How Machines Remember</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --white: #ffffff;
+  --off: #f8f7f4;
+  --border: #e4e1da;
+  --text: #1a1814;
+  --muted: #9a9590;
+  --blue: #1a56db;
+  --blue-soft: #eef3fd;
+  --green: #047857;
+  --green-soft: #ecfdf5;
+  --red: #dc2626;
+  --red-soft: #fef2f2;
+  --amber: #b45309;
+  --amber-soft: #fffbeb;
+  --purple: #7c3aed;
+  --purple-soft: #f5f3ff;
+}
+
+body {
+  background: var(--off);
+  color: var(--text);
+  font-family: 'DM Sans', sans-serif;
+  font-weight: 300;
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ── HEADER ── */
+header {
+  background: var(--white);
+  border-bottom: 1px solid var(--border);
+  padding: 40px 20px 32px;
+  text-align: center;
+}
+header h1 {
+  font-family: 'DM Serif Display', serif;
+  font-size: clamp(1.7rem, 4vw, 2.8rem);
+  font-weight: 400;
+  letter-spacing: -.3px;
+  margin-bottom: 8px;
+}
+header p {
+  font-size: .85rem;
+  color: var(--muted);
+}
+
+/* ── TABS ── */
+.tabs {
+  display: flex;
+  background: var(--white);
+  border-bottom: 1px solid var(--border);
+  justify-content: center;
+  gap: 0;
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  box-shadow: 0 1px 6px rgba(0,0,0,.05);
+}
+.tab {
+  padding: 14px 28px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: .88rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--muted);
+  border-bottom: 2px solid transparent;
+  transition: all .18s;
+}
+.tab:hover { color: var(--text); }
+.tab.active { color: var(--blue); border-bottom-color: var(--blue); font-weight: 500; }
+
+/* ── PAGE ── */
+.page { display: none; }
+.page.active { display: block; }
+
+/* ── WRAP ── */
+.wrap {
+  max-width: 760px;
+  margin: 0 auto;
+  padding: 40px 20px 80px;
+}
+
+/* ── SECTION TITLE ── */
+.section-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.5rem;
+  font-weight: 400;
+  margin-bottom: 6px;
+}
+.section-sub {
+  font-size: .85rem;
+  color: var(--muted);
+  margin-bottom: 28px;
+}
+
+/* ── SENTENCE DISPLAY ── */
+.sentence-display {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-bottom: 32px;
+  padding: 20px;
+  background: var(--white);
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+.word {
+  padding: 8px 16px;
+  border-radius: 8px;
+  font-family: 'DM Mono', monospace;
+  font-size: .9rem;
+  background: var(--off);
+  border: 2px solid var(--border);
+  color: var(--muted);
+  transition: all .4s cubic-bezier(.4,0,.2,1);
+  position: relative;
+}
+.word.past {
+  background: var(--off);
+  border-color: var(--border);
+  color: #c0bdb8;
+}
+.word.current {
+  background: var(--blue-soft);
+  border-color: var(--blue);
+  color: var(--blue);
+  transform: translateY(-4px);
+  box-shadow: 0 6px 20px rgba(26,86,219,.15);
+  font-weight: 500;
+}
+.word.key {
+  background: #fffbeb;
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.word.key.current {
+  background: #fef3c7;
+  border-color: var(--amber);
+  color: var(--amber);
+  box-shadow: 0 6px 20px rgba(180,83,9,.2);
+}
+
+/* ── BIG EXPLANATION BOX ── */
+.explain-box {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 28px;
+  margin-bottom: 20px;
+  min-height: 140px;
+  transition: all .3s;
+}
+.explain-step-num {
+  font-family: 'DM Mono', monospace;
+  font-size: .68rem;
+  color: var(--muted);
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+.explain-word-focus {
+  font-family: 'DM Mono', monospace;
+  font-size: 1.1rem;
+  font-weight: 500;
+  margin-bottom: 10px;
+  padding: 6px 14px;
+  display: inline-block;
+  border-radius: 6px;
+}
+.explain-text {
+  font-size: .95rem;
+  line-height: 1.7;
+  color: var(--text);
+}
+.explain-text strong { font-weight: 500; }
+
+/* ── MEMORY METER ── */
+.memory-section {
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.memory-label {
+  font-family: 'DM Mono', monospace;
+  font-size: .65rem;
+  color: var(--muted);
+  letter-spacing: .8px;
+  margin-bottom: 8px;
+}
+.memory-bar-wrap {
+  background: var(--off);
+  border-radius: 6px;
+  height: 10px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.memory-bar {
+  height: 100%;
+  border-radius: 6px;
+  transition: width .8s cubic-bezier(.4,0,.2,1), background .5s;
+}
+
+/* ── GATES (LSTM only) ── */
+.gates-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+.gate-card {
+  border-radius: 10px;
+  padding: 12px 14px;
+  border: 1.5px solid;
+  transition: all .4s;
+  opacity: .45;
+}
+.gate-card.lit { opacity: 1; transform: scale(1.02); }
+.gate-card.forget { background: var(--red-soft); border-color: #fca5a5; }
+.gate-card.input  { background: var(--amber-soft); border-color: #fcd34d; }
+.gate-card.update { background: var(--green-soft); border-color: #6ee7b7; }
+.gate-card.output { background: var(--purple-soft); border-color: #c4b5fd; }
+.gate-name {
+  font-family: 'DM Mono', monospace;
+  font-size: .62rem;
+  letter-spacing: .6px;
+  margin-bottom: 4px;
+}
+.gate-card.forget .gate-name { color: var(--red); }
+.gate-card.input  .gate-name { color: var(--amber); }
+.gate-card.update .gate-name { color: var(--green); }
+.gate-card.output .gate-name { color: var(--purple); }
+.gate-val {
+  font-family: 'DM Mono', monospace;
+  font-size: 1.3rem;
+  font-weight: 500;
+  margin-bottom: 2px;
+  transition: all .4s;
+}
+.gate-card.forget .gate-val { color: var(--red); }
+.gate-card.input  .gate-val { color: var(--amber); }
+.gate-card.update .gate-val { color: var(--green); }
+.gate-card.output .gate-val { color: var(--purple); }
+.gate-desc { font-size: .75rem; color: var(--muted); line-height: 1.4; }
+.gate-minibar { height: 4px; border-radius: 2px; margin-top: 7px; transition: width .7s; }
+.gate-card.forget .gate-minibar { background: var(--red); }
+.gate-card.input  .gate-minibar { background: var(--amber); }
+.gate-card.update .gate-minibar { background: var(--green); }
+.gate-card.output .gate-minibar { background: var(--purple); }
+
+/* ── CONTROLS ── */
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.btn {
+  padding: 10px 22px;
+  border-radius: 8px;
+  border: 1.5px solid var(--border);
+  background: var(--white);
+  font-family: 'DM Sans', sans-serif;
+  font-size: .85rem;
+  cursor: pointer;
+  transition: all .17s;
+  color: var(--text);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn:hover { background: var(--off); border-color: #ccc; }
+.btn.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+.btn.primary:hover { background: #1347c2; }
+.btn.purple { background: var(--purple); border-color: var(--purple); color: #fff; }
+.btn.purple:hover { background: #6d28d9; }
+.btn-status {
+  font-family: 'DM Mono', monospace;
+  font-size: .72rem;
+  color: var(--muted);
+}
+
+/* ── PROGRESS DOTS ── */
+.progress-dots {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+.dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: all .3s;
+}
+.dot.done { background: var(--muted); }
+.dot.current { background: var(--blue); transform: scale(1.3); }
+.dot.current.lstm-dot { background: var(--purple); }
+
+/* ── RESULT CARD ── */
+.result-card {
+  background: var(--white);
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 24px;
+  margin-top: 16px;
+  display: none;
+}
+.result-card.show { display: block; animation: fadeUp .4s ease; }
+@keyframes fadeUp { from{opacity:0;transform:translateY(8px)} to{opacity:1;transform:translateY(0)} }
+.result-label {
+  font-family: 'DM Mono', monospace;
+  font-size: .65rem;
+  color: var(--muted);
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+}
+.result-value {
+  font-size: 1.1rem;
+  font-weight: 500;
+}
+
+/* ── COMPARISON PAGE ── */
+.vs-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+@media(max-width:560px){ .vs-grid{grid-template-columns:1fr;} }
+
+.vs-card {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px;
+}
+.vs-title {
+  font-family: 'DM Serif Display', serif;
+  font-size: 1.15rem;
+  font-weight: 400;
+  margin-bottom: 4px;
+}
+.vs-sub { font-size: .8rem; color: var(--muted); margin-bottom: 16px; }
+.vs-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+  font-size: .85rem;
+  line-height: 1.5;
+}
+.vs-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+
+.memory-timeline {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px;
+  margin-bottom: 16px;
+}
+.mem-compare-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.mem-compare-label {
+  font-family: 'DM Mono', monospace;
+  font-size: .68rem;
+  width: 44px;
+  flex-shrink: 0;
+  color: var(--muted);
+}
+.mem-compare-bars {
+  flex: 1;
+  display: flex;
+  gap: 4px;
+  align-items: flex-end;
+  height: 48px;
+}
+.mc-bar {
+  flex: 1;
+  border-radius: 3px 3px 0 0;
+}
+
+.info-box {
+  background: var(--white);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px 22px;
+  font-size: .88rem;
+  line-height: 1.7;
+}
+.info-box + .info-box { margin-top: 12px; }
+.info-title {
+  font-family: 'DM Mono', monospace;
+  font-size: .65rem;
+  letter-spacing: 1px;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+
+/* scenario chips */
+.scenario-chips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 24px;
+}
+.chip {
+  padding: 7px 16px;
+  border-radius: 100px;
+  border: 1.5px solid var(--border);
+  background: var(--white);
+  font-size: .82rem;
+  cursor: pointer;
+  transition: all .17s;
+  color: var(--muted);
+}
+.chip:hover { border-color: var(--blue); color: var(--blue); }
+.chip.active { background: var(--blue); border-color: var(--blue); color: #fff; font-weight: 500; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>RNN & LSTM — How Machines Remember</h1>
+  <p>Step through a real sentence · Watch memory work · Understand the difference</p>
+</header>
+
+<!-- TABS -->
+<div class="tabs">
+  <button class="tab active" onclick="showPage('rnn')">① What is RNN?</button>
+  <button class="tab" onclick="showPage('lstm')">② What is LSTM?</button>
+  <button class="tab" onclick="showPage('compare')">③ Compare</button>
+</div>
+
+<!-- ════════════════════════════════════════
+     PAGE 1 — RNN
+════════════════════════════════════════ -->
+<div class="page active" id="page-rnn">
+<div class="wrap">
+
+  <div class="section-title">Vanilla RNN</div>
+  <div class="section-sub">A network with memory — but that memory fades. Pick a sentence and step through it word by word.</div>
+
+  <!-- Scenario chips -->
+  <div class="scenario-chips" id="rnn-chips">
+    <button class="chip active" data-i="0">😊 Sentiment</button>
+    <button class="chip" data-i="1">⌨️ Next Word</button>
+    <button class="chip" data-i="2">🏷 Spam Detection</button>
+  </div>
+
+  <!-- Sentence -->
+  <div class="sentence-display" id="rnn-sentence"></div>
+
+  <!-- Progress -->
+  <div class="progress-dots" id="rnn-dots"></div>
+
+  <!-- Explanation -->
+  <div class="explain-box" id="rnn-explain">
+    <div class="explain-step-num">STEP 0 / 0</div>
+    <div class="explain-text" style="color:var(--muted);">Press <strong>▶ Next word</strong> to begin. Each word is fed into the RNN one at a time.</div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls" style="margin-bottom:20px;">
+    <button class="btn primary" id="rnn-next-btn" onclick="rnnNext()">▶ Next word</button>
+    <button class="btn" onclick="rnnReset()">↺ Reset</button>
+    <span class="btn-status" id="rnn-status"></span>
+  </div>
+
+  <!-- Result -->
+  <div class="result-card" id="rnn-result">
+    <div class="result-label">RNN OUTPUT</div>
+    <div class="result-value" id="rnn-result-val"></div>
+    <div style="margin-top:10px;font-size:.83rem;color:var(--muted);line-height:1.6;" id="rnn-result-note"></div>
+  </div>
+
+  <!-- What is RNN box -->
+  <div style="margin-top:28px;">
+    <div class="info-box">
+      <div class="info-title">HOW RNN WORKS</div>
+      At every word, the RNN does one thing: <strong>h<sub>t</sub> = tanh(W·x<sub>t</sub> + U·h<sub>t-1</sub>)</strong><br><br>
+      <strong>x<sub>t</sub></strong> = the current word &nbsp;·&nbsp; <strong>h<sub>t-1</sub></strong> = memory from the previous step<br><br>
+      The problem: each step <em>overwrites</em> the memory a little. After many words, early information is almost gone. This is the <strong>vanishing gradient problem</strong>.
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ════════════════════════════════════════
+     PAGE 2 — LSTM
+════════════════════════════════════════ -->
+<div class="page" id="page-lstm">
+<div class="wrap">
+
+  <div class="section-title">LSTM — Long Short-Term Memory</div>
+  <div class="section-sub">Same idea as RNN, but with three <strong>gates</strong> that control what to remember and what to forget.</div>
+
+  <!-- Scenario chips -->
+  <div class="scenario-chips" id="lstm-chips">
+    <button class="chip active" data-i="0">😊 Sentiment</button>
+    <button class="chip" data-i="1">⌨️ Next Word</button>
+    <button class="chip" data-i="2">🏷 Spam Detection</button>
+  </div>
+
+  <!-- Sentence -->
+  <div class="sentence-display" id="lstm-sentence"></div>
+
+  <!-- Progress -->
+  <div class="progress-dots" id="lstm-dots"></div>
+
+  <!-- Explanation -->
+  <div class="explain-box" id="lstm-explain">
+    <div class="explain-step-num">STEP 0 / 0</div>
+    <div class="explain-text" style="color:var(--muted);">Press <strong>▶ Next word</strong> to begin. Watch the four gates react to each word.</div>
+
+    <!-- Gates always visible, dim until active -->
+    <div class="gates-row">
+      <div class="gate-card forget" id="g-forget">
+        <div class="gate-name">🗑 FORGET GATE</div>
+        <div class="gate-val" id="gf-val">—</div>
+        <div class="gate-desc">Erase old memory?</div>
+        <div class="gate-minibar" style="width:0%" id="gf-bar"></div>
+      </div>
+      <div class="gate-card input" id="g-input">
+        <div class="gate-name">✍ INPUT GATE</div>
+        <div class="gate-val" id="gi-val">—</div>
+        <div class="gate-desc">Write new info?</div>
+        <div class="gate-minibar" style="width:0%" id="gi-bar"></div>
+      </div>
+      <div class="gate-card update" id="g-update">
+        <div class="gate-name">📝 CELL UPDATE</div>
+        <div class="gate-val" id="gu-val">—</div>
+        <div class="gate-desc">What to write in</div>
+        <div class="gate-minibar" style="width:0%" id="gu-bar"></div>
+      </div>
+      <div class="gate-card output" id="g-output">
+        <div class="gate-name">📤 OUTPUT GATE</div>
+        <div class="gate-val" id="go-val">—</div>
+        <div class="gate-desc">What to pass on</div>
+        <div class="gate-minibar" style="width:0%" id="go-bar"></div>
+      </div>
+    </div>
+
+    <!-- Memory meter -->
+    <div class="memory-section">
+      <div class="memory-label">LONG-TERM MEMORY (cell state)</div>
+      <div class="memory-bar-wrap">
+        <div class="memory-bar" id="lstm-mem-bar" style="width:20%;background:var(--purple);"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Controls -->
+  <div class="controls" style="margin-bottom:20px;">
+    <button class="btn purple" id="lstm-next-btn" onclick="lstmNext()">▶ Next word</button>
+    <button class="btn" onclick="lstmReset()">↺ Reset</button>
+    <span class="btn-status" id="lstm-status"></span>
+  </div>
+
+  <!-- Result -->
+  <div class="result-card" id="lstm-result">
+    <div class="result-label">LSTM OUTPUT</div>
+    <div class="result-value" id="lstm-result-val"></div>
+    <div style="margin-top:10px;font-size:.83rem;color:var(--muted);line-height:1.6;" id="lstm-result-note"></div>
+  </div>
+
+  <!-- What is LSTM box -->
+  <div style="margin-top:28px;">
+    <div class="info-box">
+      <div class="info-title">HOW LSTM FIXES THE PROBLEM</div>
+      LSTM adds a <strong>cell state</strong> — a separate "long-term memory highway" that runs alongside the hidden state.<br><br>
+      The three gates decide:<br>
+      🗑 <strong>Forget gate</strong> — how much of the old memory to erase<br>
+      ✍ <strong>Input gate</strong> — how much of the new word to write in<br>
+      📤 <strong>Output gate</strong> — what to pass to the next step<br><br>
+      Important information can survive <strong>20+ steps</strong> without vanishing.
+    </div>
+  </div>
+
+</div>
+</div>
+
+<!-- ════════════════════════════════════════
+     PAGE 3 — COMPARE
+════════════════════════════════════════ -->
+<div class="page" id="page-compare">
+<div class="wrap">
+
+  <div class="section-title">RNN vs LSTM</div>
+  <div class="section-sub">The core difference is how long memory survives.</div>
+
+  <!-- Memory decay visual -->
+  <div class="memory-timeline">
+    <div class="info-title" style="margin-bottom:14px;">MEMORY STRENGTH OVER A 7-WORD SENTENCE</div>
+    <div class="mem-compare-row">
+      <div class="mem-compare-label">RNN</div>
+      <div class="mem-compare-bars" id="rnn-decay-bars"></div>
+    </div>
+    <div class="mem-compare-row">
+      <div class="mem-compare-label">LSTM</div>
+      <div class="mem-compare-bars" id="lstm-decay-bars"></div>
+    </div>
+    <div style="display:flex;justify-content:space-between;margin-top:6px;">
+      <span style="font-family:'DM Mono',monospace;font-size:.6rem;color:var(--muted);">word 1 (earliest)</span>
+      <span style="font-family:'DM Mono',monospace;font-size:.6rem;color:var(--muted);">word 7 (latest)</span>
+    </div>
+    <div style="margin-top:12px;font-size:.83rem;color:var(--muted);line-height:1.6;">
+      The <strong>blue RNN bars</strong> shrink fast — early words fade. The <strong>purple LSTM bars</strong> stay tall — the cell state preserves them.
+    </div>
+  </div>
+
+  <!-- Two cards -->
+  <div class="vs-grid">
+    <div class="vs-card" style="border-color:#c5d8f7;">
+      <div class="vs-title" style="color:var(--blue);">RNN</div>
+      <div class="vs-sub">Recurrent Neural Network</div>
+      <div class="vs-item"><span class="vs-icon">✅</span><span>Simple and fast to train</span></div>
+      <div class="vs-item"><span class="vs-icon">✅</span><span>Good for short sequences</span></div>
+      <div class="vs-item"><span class="vs-icon">❌</span><span>Forgets early words (vanishing gradient)</span></div>
+      <div class="vs-item"><span class="vs-icon">❌</span><span>Struggles with long sentences</span></div>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:.8rem;color:var(--muted);">
+        <strong>Use for:</strong> POS tagging, short text, simple time-series
+      </div>
+    </div>
+    <div class="vs-card" style="border-color:#c4b5fd;">
+      <div class="vs-title" style="color:var(--purple);">LSTM</div>
+      <div class="vs-sub">Long Short-Term Memory</div>
+      <div class="vs-item"><span class="vs-icon">✅</span><span>Remembers across long sequences</span></div>
+      <div class="vs-item"><span class="vs-icon">✅</span><span>Gates control what to keep/forget</span></div>
+      <div class="vs-item"><span class="vs-icon">✅</span><span>Used in speech, translation, sentiment</span></div>
+      <div class="vs-item"><span class="vs-icon">⚠️</span><span>Slower — 4× more parameters than RNN</span></div>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);font-size:.8rem;color:var(--muted);">
+        <strong>Use for:</strong> Translation, sentiment, speech recognition
+      </div>
+    </div>
+  </div>
+
+  <!-- Today note -->
+  <div class="info-box">
+    <div class="info-title">WHERE ARE THEY TODAY?</div>
+    <strong>Transformers</strong> (like GPT, BERT) have replaced RNN/LSTM for most language tasks — they use <strong>attention</strong> instead of sequential processing, so they don't have the vanishing gradient problem at all.<br><br>
+    But LSTM is still widely used for <strong>real-time, on-device tasks</strong> — like voice assistants, autocomplete on your phone, and stock prediction — where speed and low memory matter.
+  </div>
+
+</div>
+</div>
+
+<script>
+// ══════════════════════════════════════════════
+// DATA
+// ══════════════════════════════════════════════
+const SCENARIOS = [
+  {
+    // 0 — Sentiment
+    words:    ['The','movie','was','not','good','at','all'],
+    keyWords: [false, false, false, true, false, false, false],
+    rnn: {
+      steps: [
+        { heading: '"The"', text: 'First word in. Hidden state starts fresh. Nothing interesting yet — just an article.' },
+        { heading: '"movie"', text: 'Topic is set. RNN writes "movie context" into memory. Hidden state is strong.' },
+        { heading: '"was"', text: 'A filler verb. Hidden state updates slightly. Memory of "movie" starts to weaken.' },
+        { heading: '⭐ "not"', text: 'KEY word! The RNN processes "not" — but its hidden state is already blurring earlier words. It tries to store the negation, but memory is limited.' },
+        { heading: '"good"', text: 'Positive word. But the RNN has partially forgotten "not" from two steps ago. It starts leaning positive.' },
+        { heading: '"at"', text: 'Filler word. Hidden state keeps shifting. The negation signal is fading.' },
+        { heading: '"all"', text: 'Last word. RNN produces output — but "not" has been overwritten by newer words. The prediction may be wrong.' },
+      ],
+      memStrength: [90, 75, 58, 48, 34, 20, 10],
+      result: '😊 Positive — WRONG',
+      resultNote: 'The RNN forgot "not" by the time it reached "good". Early words lose influence after just a few steps.',
+    },
+    lstm: {
+      steps: [
+        { heading: '"The"', text: 'Forget gate ≈ 0.5, Input gate low. Neutral article — not much to store. Cell state barely changes.', gates: {f:.5,i:.2,u:.1,o:.3} },
+        { heading: '"movie"', text: 'Input gate HIGH. "movie" is the topic — LSTM writes this strongly into cell state. Forget gate moderate.', gates: {f:.55,i:.82,u:.8,o:.5} },
+        { heading: '"was"', text: 'Filler verb. Input gate LOW. Cell state mostly preserved from previous step. Forget gate high (keep memory).', gates: {f:.88,i:.2,u:.15,o:.4} },
+        { heading: '⭐ "not"', text: 'CRITICAL! Input gate HIGH, strong negative update. LSTM stamps a negation flag into cell state. This information will survive all the way to the end.', gates: {f:.25,i:.95,u:.97,o:.55} },
+        { heading: '"good"', text: 'Positive word — BUT cell state still holds the negation from "not". The forget gate is low, so "not" survives. Net signal stays negative.', gates: {f:.82,i:.45,u:-.75,o:.65} },
+        { heading: '"at"', text: 'Filler. Forget gate high — cell state stable. Negation flag is still intact after 3 steps.', gates: {f:.9,i:.18,u:.1,o:.48} },
+        { heading: '"all"', text: 'Output gate fires at full strength. All stored context is used: movie + not + good = Negative. Correct!', gates: {f:.85,i:.3,u:-.4,o:.96} },
+      ],
+      memStrength: [68, 72, 73, 96, 93, 91, 90],
+      result: '😞 Negative — CORRECT ✓',
+      resultNote: 'LSTM stored "not" in the cell state at step 4 and kept it alive until the final output.',
+    },
+  },
+  {
+    // 1 — Next Word
+    words:    ['The','cat','sat','on','the','warm','___'],
+    keyWords: [false, true, true, false, false, true, false],
+    rnn: {
+      steps: [
+        { heading: '"The"', text: 'Article. Hidden state begins. RNN expects a noun next.' },
+        { heading: '"cat"', text: 'Subject noun! Strong signal stored. Hidden state reflects "cat context".' },
+        { heading: '"sat"', text: 'Verb — action of the cat. RNN stores "cat sat" together. Memory is still decent.' },
+        { heading: '"on"', text: 'Preposition. Signals a location phrase coming. "cat" memory weakening.' },
+        { heading: '"the"', text: 'Another article — the noun it precedes is important. But by now "cat" and "sat" are faint.' },
+        { heading: '"warm"', text: 'Adjective! Very informative — predicts a warm object. RNN stores this but has mostly forgotten the subject.', },
+        { heading: '"___"', text: 'RNN predicts next word — but "cat" and "sat" have faded. It mainly knows "warm ___" and guesses a common word.' },
+      ],
+      memStrength: [85, 72, 56, 40, 26, 15, 7],
+      result: '❓ "day" or "time"',
+      resultNote: 'Without remembering "cat" + "sat", the RNN only sees "warm ___" and guesses a generic word.',
+    },
+    lstm: {
+      steps: [
+        { heading: '"The"', text: 'Article. Cell state initialises. Input gate low.', gates: {f:.4,i:.4,u:.4,o:.3} },
+        { heading: '"cat"', text: 'Subject! Input gate HIGH — "cat" is written strongly into cell state. This will survive.', gates: {f:.45,i:.92,u:.95,o:.5} },
+        { heading: '"sat"', text: 'Verb. "cat sat" written together. Forget gate preserves "cat". Cell state now holds full subject+verb.', gates: {f:.72,i:.88,u:.9,o:.55} },
+        { heading: '"on"', text: 'Preposition. Forget gate high — keeping "cat sat". Input gate low — not much to add.', gates: {f:.87,i:.38,u:.3,o:.48} },
+        { heading: '"the"', text: 'Article. Cell state stable. Forget gate very high — all context preserved.', gates: {f:.9,i:.3,u:.28,o:.45} },
+        { heading: '"warm"', text: 'KEY adjective! Input gate HIGH — "warm" written in. Cell state now has "cat + sat + warm" — three strong clues.', gates: {f:.75,i:.91,u:.93,o:.6} },
+        { heading: '"___"', text: 'Output gate fires. Full cell state used: cat + sat + on + warm → predicts a warm object a cat sits on.', gates: {f:.82,i:.25,u:.2,o:.98} },
+      ],
+      memStrength: [72, 88, 87, 86, 85, 93, 91],
+      result: '🎯 "mat" or "rug"',
+      resultNote: 'LSTM kept "cat", "sat", and "warm" all alive — combining them gives the right prediction.',
+    },
+  },
+  {
+    // 2 — Spam
+    words:    ['You','have','WON','a','FREE','prize','now'],
+    keyWords: [false, false, true, false, true, false, false],
+    rnn: {
+      steps: [
+        { heading: '"You"', text: 'Common word. Hidden state starts. Very neutral.' },
+        { heading: '"have"', text: 'Verb. Neutral. Memory of "You" still present but weakening.' },
+        { heading: '"WON"', text: 'Spam signal! RNN sees this — hidden state spikes. Strong spam indicator stored.' },
+        { heading: '"a"', text: 'Filler article. Overwrites part of the "WON" signal. Spam evidence weakening.' },
+        { heading: '"FREE"', text: 'Another spam word. Hidden state updates — but the combined "WON + FREE" signal is diluted by intermediate words.' },
+        { heading: '"prize"', text: 'Reinforces spam — but "WON" from step 3 has significantly faded.' },
+        { heading: '"now"', text: 'Urgency word. RNN only strongly remembers the most recent words. Misses the full spam pattern.' },
+      ],
+      memStrength: [88, 73, 95, 62, 70, 52, 35],
+      result: '⚠️ Maybe spam (50%)',
+      resultNote: 'RNN lost the strong "WON" signal by the time it reached the end. Misses the combination of spam words.',
+    },
+    lstm: {
+      steps: [
+        { heading: '"You"', text: 'Neutral. Gates mostly closed. Cell state initialised at near zero.', gates: {f:.4,i:.3,u:.2,o:.3} },
+        { heading: '"have"', text: 'Filler verb. Forget gate high — nothing to erase. Input gate low.', gates: {f:.85,i:.22,u:.15,o:.35} },
+        { heading: '"WON"', text: 'SPAM FLAG! Input gate fully open. "WON" stamped into cell state at full strength. Will not be forgotten.', gates: {f:.3,i:.97,u:.98,o:.6} },
+        { heading: '"a"', text: 'Filler. Forget gate HIGH — "WON" stays. Input gate nearly closed. Cell state unchanged.', gates: {f:.92,i:.15,u:.1,o:.42} },
+        { heading: '"FREE"', text: 'Second SPAM FLAG! Input gate opens again — adds to cell state. Now "WON + FREE" both stored.', gates: {f:.6,i:.94,u:.96,o:.65} },
+        { heading: '"prize"', text: 'Reinforces spam context. Cell state holds WON + FREE + prize. All three spam words accumulated.', gates: {f:.75,i:.7,u:.72,o:.6} },
+        { heading: '"now"', text: 'Urgency word adds to pattern. Output gate fires with full cell state: WON + FREE + prize + now = SPAM.', gates: {f:.8,i:.5,u:.55,o:.97} },
+      ],
+      memStrength: [65, 67, 98, 96, 99, 97, 96],
+      result: '🚨 Spam — CORRECT ✓',
+      resultNote: 'LSTM stored every spam keyword (WON, FREE, prize, now) in the cell state and combined them for a confident spam prediction.',
+    },
+  },
+];
+
+// ══════════════════════════════════════════════
+// STATE
+// ══════════════════════════════════════════════
+let rnnScenario = 0, rnnStep = 0;
+let lstmScenario = 0, lstmStep = 0;
+
+// ══════════════════════════════════════════════
+// PAGE SWITCHING
+// ══════════════════════════════════════════════
+function showPage(name) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  event.currentTarget.classList.add('active');
+  if (name === 'compare') buildCompare();
+}
+
+// ══════════════════════════════════════════════
+// BUILD SENTENCE
+// ══════════════════════════════════════════════
+function buildSentence(containerId, words, keyWords, currentStep) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  words.forEach((w, i) => {
+    const span = document.createElement('span');
+    span.className = 'word';
+    if (keyWords[i]) span.classList.add('key');
+    if (i < currentStep) span.classList.add('past');
+    else if (i === currentStep) span.classList.add('current');
+    span.textContent = w;
+    el.appendChild(span);
+  });
+}
+
+function buildDots(containerId, total, current, isLstm) {
+  const el = document.getElementById(containerId);
+  el.innerHTML = '';
+  for (let i = 0; i < total; i++) {
+    const d = document.createElement('div');
+    d.className = 'dot' + (i < current ? ' done' : i === current ? ' current' + (isLstm ? ' lstm-dot' : '') : '');
+    el.appendChild(d);
+  }
+}
+
+// ══════════════════════════════════════════════
+// RNN
+// ══════════════════════════════════════════════
+function rnnInit() {
+  const sc = SCENARIOS[rnnScenario];
+  rnnStep = 0;
+  buildSentence('rnn-sentence', sc.words, sc.keyWords, -1);
+  buildDots('rnn-dots', sc.words.length, -1, false);
+  document.getElementById('rnn-explain').innerHTML = `
+    <div class="explain-step-num">READY</div>
+    <div class="explain-text" style="color:var(--muted);">Press <strong>▶ Next word</strong> to begin. Watch how the RNN processes each word and how memory fades.</div>
+  `;
+  document.getElementById('rnn-status').textContent = '';
+  document.getElementById('rnn-result').classList.remove('show');
+  document.getElementById('rnn-next-btn').textContent = '▶ Next word';
+}
+
+function rnnNext() {
+  const sc = SCENARIOS[rnnScenario];
+  if (rnnStep >= sc.words.length) return;
+
+  const step = sc.rnn.steps[rnnStep];
+  const mem = sc.rnn.memStrength[rnnStep];
+
+  buildSentence('rnn-sentence', sc.words, sc.keyWords, rnnStep);
+  buildDots('rnn-dots', sc.words.length, rnnStep, false);
+
+  const memColor = mem > 60 ? 'var(--blue)' : mem > 30 ? 'var(--amber)' : 'var(--red)';
+  const memLabel = mem > 60 ? 'Strong' : mem > 30 ? 'Fading' : 'Weak';
+
+  document.getElementById('rnn-explain').innerHTML = `
+    <div class="explain-step-num">STEP ${rnnStep + 1} / ${sc.words.length}</div>
+    <div class="explain-word-focus" style="background:var(--blue-soft);color:var(--blue);">${step.heading}</div>
+    <div class="explain-text">${step.text}</div>
+    <div class="memory-section">
+      <div class="memory-label">RNN HIDDEN STATE STRENGTH — ${memLabel} (${mem}%)</div>
+      <div class="memory-bar-wrap">
+        <div class="memory-bar" style="width:${mem}%;background:${memColor};"></div>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('rnn-status').textContent = `word ${rnnStep + 1} of ${sc.words.length}`;
+  rnnStep++;
+
+  if (rnnStep === sc.words.length) {
+    document.getElementById('rnn-next-btn').textContent = '✓ Done';
+    const r = document.getElementById('rnn-result');
+    document.getElementById('rnn-result-val').textContent = sc.rnn.result;
+    document.getElementById('rnn-result-note').textContent = sc.rnn.resultNote;
+    r.classList.add('show');
+  }
+}
+
+function rnnReset() { rnnInit(); }
+
+document.querySelectorAll('#rnn-chips .chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#rnn-chips .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    rnnScenario = parseInt(chip.dataset.i);
+    rnnInit();
+  });
+});
+
+// ══════════════════════════════════════════════
+// LSTM
+// ══════════════════════════════════════════════
+function lstmInit() {
+  const sc = SCENARIOS[lstmScenario];
+  lstmStep = 0;
+  buildSentence('lstm-sentence', sc.words, sc.keyWords, -1);
+  buildDots('lstm-dots', sc.words.length, -1, true);
+
+  // Reset gates
+  ['gf','gi','gu','go'].forEach(id => {
+    document.getElementById(id + '-val').textContent = '—';
+    document.getElementById(id + '-bar').style.width = '0%';
+  });
+  ['g-forget','g-input','g-update','g-output'].forEach(id => {
+    document.getElementById(id).classList.remove('lit');
+  });
+  document.getElementById('lstm-mem-bar').style.width = '20%';
+
+  document.getElementById('lstm-explain').innerHTML = buildLstmExplainHTML(`
+    <div class="explain-step-num">READY</div>
+    <div class="explain-text" style="color:var(--muted);">Press <strong>▶ Next word</strong> to begin. Watch the four gates light up as each word is processed.</div>
+  `);
+  document.getElementById('lstm-status').textContent = '';
+  document.getElementById('lstm-result').classList.remove('show');
+  document.getElementById('lstm-next-btn').textContent = '▶ Next word';
+}
+
+function buildLstmExplainHTML(topHTML) {
+  return topHTML + `
+    <div class="gates-row">
+      <div class="gate-card forget" id="g-forget">
+        <div class="gate-name">🗑 FORGET GATE</div>
+        <div class="gate-val" id="gf-val">—</div>
+        <div class="gate-desc">Erase old memory?</div>
+        <div class="gate-minibar" style="width:0%" id="gf-bar"></div>
+      </div>
+      <div class="gate-card input" id="g-input">
+        <div class="gate-name">✍ INPUT GATE</div>
+        <div class="gate-val" id="gi-val">—</div>
+        <div class="gate-desc">Write new info?</div>
+        <div class="gate-minibar" style="width:0%" id="gi-bar"></div>
+      </div>
+      <div class="gate-card update" id="g-update">
+        <div class="gate-name">📝 CELL UPDATE</div>
+        <div class="gate-val" id="gu-val">—</div>
+        <div class="gate-desc">What to write in</div>
+        <div class="gate-minibar" style="width:0%" id="gu-bar"></div>
+      </div>
+      <div class="gate-card output" id="g-output">
+        <div class="gate-name">📤 OUTPUT GATE</div>
+        <div class="gate-val" id="go-val">—</div>
+        <div class="gate-desc">What to pass on</div>
+        <div class="gate-minibar" style="width:0%" id="go-bar"></div>
+      </div>
+    </div>
+    <div class="memory-section">
+      <div class="memory-label">LONG-TERM MEMORY (cell state)</div>
+      <div class="memory-bar-wrap">
+        <div class="memory-bar" id="lstm-mem-bar" style="width:20%;background:var(--purple);"></div>
+      </div>
+    </div>
+  `;
+}
+
+function lstmNext() {
+  const sc = SCENARIOS[lstmScenario];
+  if (lstmStep >= sc.words.length) return;
+
+  const step = sc.lstm.steps[lstmStep];
+  const g = step.gates;
+  const mem = sc.lstm.memStrength[lstmStep];
+
+  buildSentence('lstm-sentence', sc.words, sc.keyWords, lstmStep);
+  buildDots('lstm-dots', sc.words.length, lstmStep, true);
+
+  const topHTML = `
+    <div class="explain-step-num">STEP ${lstmStep + 1} / ${sc.words.length}</div>
+    <div class="explain-word-focus" style="background:var(--purple-soft);color:var(--purple);">${step.heading}</div>
+    <div class="explain-text">${step.text}</div>
+  `;
+
+  document.getElementById('lstm-explain').innerHTML = buildLstmExplainHTML(topHTML);
+
+  // Set gate values
+  const pairs = [
+    ['gf', g.f, 'g-forget'],
+    ['gi', g.i, 'g-input'],
+    ['gu', Math.abs(g.u), 'g-update'],
+    ['go', g.o, 'g-output'],
+  ];
+  pairs.forEach(([id, val, cardId]) => {
+    document.getElementById(id + '-val').textContent = val.toFixed(2);
+    document.getElementById(id + '-bar').style.width = (Math.abs(val) * 100) + '%';
+  });
+
+  // Highlight dominant gate
+  const vals = [g.f, g.i, Math.abs(g.u), g.o];
+  const names = ['g-forget','g-input','g-update','g-output'];
+  const maxIdx = vals.indexOf(Math.max(...vals));
+  names.forEach((n, i) => {
+    document.getElementById(n).classList.toggle('lit', i === maxIdx);
+  });
+
+  // Memory bar
+  document.getElementById('lstm-mem-bar').style.width = mem + '%';
+
+  document.getElementById('lstm-status').textContent = `word ${lstmStep + 1} of ${sc.words.length}`;
+  lstmStep++;
+
+  if (lstmStep === sc.words.length) {
+    document.getElementById('lstm-next-btn').textContent = '✓ Done';
+    const r = document.getElementById('lstm-result');
+    document.getElementById('lstm-result-val').textContent = sc.lstm.result;
+    document.getElementById('lstm-result-note').textContent = sc.lstm.resultNote;
+    r.classList.add('show');
+  }
+}
+
+function lstmReset() { lstmInit(); }
+
+document.querySelectorAll('#lstm-chips .chip').forEach(chip => {
+  chip.addEventListener('click', () => {
+    document.querySelectorAll('#lstm-chips .chip').forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    lstmScenario = parseInt(chip.dataset.i);
+    lstmInit();
+  });
+});
+
+// ══════════════════════════════════════════════
+// COMPARE PAGE
+// ══════════════════════════════════════════════
+function buildCompare() {
+  const rnnVals = [90, 72, 55, 40, 28, 16, 8];
+  const lstmVals = [72, 78, 80, 82, 85, 88, 87];
+
+  const buildBars = (containerId, vals, color) => {
+    const el = document.getElementById(containerId);
+    el.innerHTML = '';
+    const max = Math.max(...vals);
+    vals.forEach(v => {
+      const bar = document.createElement('div');
+      bar.className = 'mc-bar';
+      bar.style.flex = '1';
+      bar.style.height = Math.round(v / max * 44) + 'px';
+      bar.style.background = color;
+      bar.style.opacity = (v / max * 0.6 + 0.3).toFixed(2);
+      bar.style.borderRadius = '3px 3px 0 0';
+      el.appendChild(bar);
+    });
+  };
+
+  buildBars('rnn-decay-bars', rnnVals, 'var(--blue)');
+  buildBars('lstm-decay-bars', lstmVals, 'var(--purple)');
+}
+
+// ══════════════════════════════════════════════
+// INIT
+// ══════════════════════════════════════════════
+rnnInit();
+lstmInit();
+buildCompare();
+</script>
+</body>
+</html>
