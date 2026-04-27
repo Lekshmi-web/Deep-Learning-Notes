@@ -1,0 +1,954 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CNN — How an Image Thinks</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --white: #ffffff; --off: #f7f6f3; --light: #eeece8; --border: #e0ddd8;
+  --text: #1a1814; --muted: #888580; --accent: #e8490f;
+  --blue: #1a56db; --blue-soft: #eef3fd; --blue-mid: #c5d8f7;
+  --green: #0a7c59; --green-soft: #e8f5f0;
+  --purple: #6b21a8; --purple-soft: #f5f0fd;
+  --shadow: 0 1px 3px rgba(0,0,0,0.07), 0 4px 16px rgba(0,0,0,0.05);
+  --shadow-md: 0 2px 8px rgba(0,0,0,0.09), 0 8px 32px rgba(0,0,0,0.07);
+}
+html { scroll-behavior: smooth; }
+body { background: var(--off); color: var(--text); font-family: 'DM Sans', sans-serif; font-weight: 300; line-height: 1.6; }
+
+/* Header */
+.header { background: var(--white); border-bottom: 1px solid var(--border); padding: 44px 24px 36px; text-align: center; }
+.header h1 { font-family: 'DM Serif Display', serif; font-size: clamp(1.8rem, 4.5vw, 3rem); font-weight: 400; letter-spacing: -0.4px; margin-bottom: 8px; }
+.header p { font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--muted); letter-spacing: 1.5px; }
+
+/* Sticky picker */
+.picker { background: var(--white); border-bottom: 1px solid var(--border); padding: 14px 24px; display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; position: sticky; top: 0; z-index: 100; box-shadow: 0 2px 6px rgba(0,0,0,0.05); }
+.picker-label { font-family: 'DM Mono', monospace; font-size: 0.72rem; color: var(--muted); }
+.img-btn { padding: 7px 18px; border-radius: 100px; border: 1.5px solid var(--border); background: var(--white); font-family: 'DM Sans', sans-serif; font-size: 0.82rem; cursor: pointer; transition: all 0.18s; color: var(--muted); }
+.img-btn:hover { border-color: var(--blue); color: var(--blue); }
+.img-btn.active { background: var(--blue); border-color: var(--blue); color: white; font-weight: 500; }
+
+/* Main layout */
+.pipeline { max-width: 960px; margin: 36px auto; padding: 0 18px 80px; }
+
+/* Stage card */
+.stage { background: var(--white); border: 1px solid var(--border); border-radius: 14px; overflow: hidden; margin-bottom: 20px; box-shadow: var(--shadow); }
+.stage-head { display: flex; align-items: center; gap: 14px; padding: 18px 24px; border-bottom: 1px solid var(--border); }
+.s-num { width: 30px; height: 30px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-family: 'DM Mono', monospace; font-size: 0.72rem; font-weight: 500; flex-shrink: 0; }
+.s-inp  { background: var(--off); color: var(--text); border: 1px solid var(--border); }
+.s-conv { background: var(--blue-soft); color: var(--blue); }
+.s-relu { background: #fff7ed; color: #c2410c; }
+.s-pool { background: var(--green-soft); color: var(--green); }
+.s-fc   { background: var(--purple-soft); color: var(--purple); }
+.s-out  { background: var(--text); color: var(--white); }
+.stage-info { flex: 1; }
+.stage-info h2 { font-family: 'DM Serif Display', serif; font-size: 1.15rem; font-weight: 400; margin-bottom: 2px; }
+.stage-info p { font-size: 0.78rem; color: var(--muted); }
+.stag { font-family: 'DM Mono', monospace; font-size: 0.62rem; padding: 3px 9px; border-radius: 100px; }
+.t-inp  { background: var(--off); color: var(--muted); border: 1px solid var(--border); }
+.t-conv { background: var(--blue-soft); color: var(--blue); }
+.t-relu { background: #fff7ed; color: #c2410c; }
+.t-pool { background: var(--green-soft); color: var(--green); }
+.t-fc   { background: var(--purple-soft); color: var(--purple); }
+.t-out  { background: var(--text); color: var(--white); }
+.body { padding: 24px; }
+
+/* 2-col */
+.row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; align-items: start; }
+@media (max-width: 640px) { .row { grid-template-columns: 1fr; } }
+
+/* Labels */
+.cl { font-family: 'DM Mono', monospace; font-size: 0.62rem; letter-spacing: 1px; color: var(--muted); margin-bottom: 8px; text-transform: uppercase; }
+
+/* Canvas */
+canvas { display: block; border-radius: 8px; border: 1px solid var(--border); }
+
+/* Pixel grid */
+.px-grid { display: grid; gap: 2px; }
+.px-cell { width: 22px; height: 22px; border-radius: 3px; display: flex; align-items: center; justify-content: center; font-family: 'DM Mono', monospace; font-size: 6px; border: 1px solid rgba(0,0,0,0.04); cursor: default; transition: transform 0.1s; }
+.px-cell:hover { transform: scale(1.7); z-index: 10; position: relative; }
+
+/* Insight */
+.insight { background: var(--off); border-left: 3px solid var(--border); border-radius: 0 6px 6px 0; padding: 12px 14px; font-size: 0.8rem; color: var(--muted); line-height: 1.62; margin-top: 14px; }
+.insight strong { color: var(--text); font-weight: 500; }
+
+/* Buttons */
+.btn { padding: 8px 18px; border-radius: 7px; border: 1.5px solid var(--border); background: var(--white); font-family: 'DM Sans', sans-serif; font-size: 0.8rem; cursor: pointer; transition: all 0.16s; color: var(--text); display: inline-flex; align-items: center; gap: 5px; }
+.btn:hover { background: var(--off); }
+.btn.p { background: var(--blue); border-color: var(--blue); color: white; }
+.btn.p:hover { background: #1347c2; }
+.btn-row { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; align-items: center; }
+
+/* Status */
+.status { font-family: 'DM Mono', monospace; font-size: 0.68rem; color: var(--muted); }
+
+/* Kernel */
+.k-grid { display: grid; gap: 4px; width: fit-content; }
+.k-cell { width: 38px; height: 38px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500; border: 1.5px solid transparent; }
+.kp { background: var(--blue-soft); color: var(--blue); border-color: var(--blue-mid); }
+.kn { background: #fff7ed; color: #c2410c; border-color: #fed7aa; }
+.kz { background: var(--off); color: var(--muted); border-color: var(--border); }
+
+/* Filter tabs */
+.f-tabs { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; }
+.f-tab { padding: 5px 12px; border-radius: 100px; border: 1.5px solid var(--border); font-size: 0.75rem; cursor: pointer; background: var(--white); color: var(--muted); font-family: 'DM Sans', sans-serif; transition: all 0.16s; }
+.f-tab:hover { border-color: var(--blue); color: var(--blue); }
+.f-tab.active { background: var(--blue); border-color: var(--blue); color: white; }
+
+/* Conv scan box */
+.scan-box { background: var(--off); border-radius: 10px; padding: 14px; border: 1px solid var(--border); position: relative; }
+.math-line { font-family: 'DM Mono', monospace; font-size: 0.76rem; color: var(--muted); text-align: center; padding: 9px; background: var(--white); border-radius: 7px; border: 1px solid var(--border); margin-top: 10px; transition: all 0.3s; }
+.math-line em { color: var(--text); font-style: normal; font-weight: 500; }
+
+/* Feature maps */
+.fmaps { display: flex; gap: 10px; flex-wrap: wrap; }
+.fmap-item { text-align: center; }
+.fmap-cap { font-family: 'DM Mono', monospace; font-size: 0.58rem; color: var(--muted); margin-top: 4px; }
+
+/* Bar chart */
+.bar-chart { display: flex; align-items: flex-end; gap: 4px; height: 80px; }
+.bar-item { display: flex; flex-direction: column; align-items: center; flex: 1; }
+.bar { width: 100%; border-radius: 3px 3px 0 0; transition: height 0.5s ease, background 0.4s ease; min-height: 2px; }
+.bar-val { font-family: 'DM Mono', monospace; font-size: 6.5px; color: var(--muted); margin-top: 2px; text-align: center; }
+
+/* Pool grid */
+.pool-grid { display: grid; gap: 4px; width: fit-content; margin: 0 auto; }
+.pool-cell { width: 36px; height: 36px; border-radius: 5px; display: flex; align-items: center; justify-content: center; font-family: 'DM Mono', monospace; font-size: 11px; font-weight: 500; border: 1.5px solid transparent; transition: all 0.25s; }
+
+/* Output bars */
+.out-row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
+.out-lbl { width: 86px; font-size: 0.78rem; color: var(--text); text-align: right; flex-shrink: 0; }
+.out-track { flex: 1; height: 22px; background: var(--off); border-radius: 5px; overflow: hidden; border: 1px solid var(--border); }
+.out-fill { height: 100%; border-radius: 5px; display: flex; align-items: center; justify-content: flex-end; padding-right: 7px; transition: width 1.1s cubic-bezier(0.4,0,0.2,1); font-family: 'DM Mono', monospace; font-size: 0.68rem; color: white; font-weight: 500; }
+
+/* Connector */
+.conn { display: flex; justify-content: center; height: 20px; margin: -2px 0; }
+.conn::before { content: ''; width: 1px; height: 20px; background: var(--border); display: block; }
+
+/* Result badge */
+.result-badge { display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px; border-radius: 100px; font-size: 0.88rem; font-weight: 500; margin-top: 14px; border: 1.5px solid; }
+
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>How a CNN Sees Your Image</h1>
+  <p>PICK AN IMAGE BELOW — WATCH IT TRAVEL THROUGH EVERY LAYER</p>
+</div>
+
+<div class="picker">
+  <span class="picker-label">image →</span>
+  <button class="img-btn active" data-img="cat">🐱 Cat</button>
+  <button class="img-btn" data-img="dog">🐶 Dog</button>
+  <button class="img-btn" data-img="car">🚗 Car</button>
+  <button class="img-btn" data-img="bird">🐦 Bird</button>
+</div>
+
+<div class="pipeline">
+
+  <!-- ① INPUT -->
+  <div class="stage">
+    <div class="stage-head">
+      <div class="s-num s-inp">①</div>
+      <div class="stage-info"><h2>Input Image</h2><p>The only thing the network receives — raw pixel numbers</p></div>
+      <span class="stag t-inp">INPUT</span>
+    </div>
+    <div class="body">
+      <div class="row">
+        <div>
+          <div class="cl">Your image (200×200, drawn with code)</div>
+          <canvas id="mainCanvas" width="200" height="200"></canvas>
+          <div class="insight">The network <strong>never sees</strong> a "cat." It receives numbers — three values per pixel (R, G, B), each 0–255.</div>
+        </div>
+        <div>
+          <div class="cl">Actual pixel values (8×8 sample — hover to inspect)</div>
+          <div id="pixelGrid" class="px-grid" style="grid-template-columns:repeat(8,22px);gap:2px;"></div>
+          <div class="insight">A 224×224 image = <strong>150,528 numbers</strong> fed into the network. These are just brightness levels per channel.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="conn"></div>
+
+  <!-- ② CONVOLUTION -->
+  <div class="stage">
+    <div class="stage-head">
+      <div class="s-num s-conv">②</div>
+      <div class="stage-info"><h2>Convolution Layer</h2><p>A tiny filter slides across your image and detects patterns</p></div>
+      <span class="stag t-conv">CONV</span>
+    </div>
+    <div class="body">
+      <div class="cl">Choose a filter to apply to your image</div>
+      <div class="f-tabs" id="filterTabs">
+        <button class="f-tab active" data-filter="edge">Edge Detect</button>
+        <button class="f-tab" data-filter="hEdge">Horizontal Edge</button>
+        <button class="f-tab" data-filter="vEdge">Vertical Edge</button>
+        <button class="f-tab" data-filter="sharpen">Sharpen</button>
+        <button class="f-tab" data-filter="blur">Blur</button>
+      </div>
+      <div class="row" style="margin-top:4px;">
+        <div>
+          <div class="cl">Filter scanning your image in real time</div>
+          <div class="scan-box">
+            <canvas id="convCanvas" width="200" height="200" style="border:none;display:block;"></canvas>
+            <div class="math-line" id="mathLine">position (0,0) — weighted sum = <em>0</em></div>
+          </div>
+          <div class="btn-row">
+            <button class="btn p" id="convBtn" onclick="toggleConv()">▶ Animate scan</button>
+            <button class="btn" onclick="resetConv()">↺ Reset</button>
+            <span class="status" id="convStatus">press to start</span>
+          </div>
+        </div>
+        <div>
+          <div class="cl">Kernel weights (3×3)</div>
+          <div class="k-grid" id="kernelDisp" style="grid-template-columns:repeat(3,38px);margin-bottom:16px;"></div>
+          <div class="cl">Feature maps your image produces (4 different filters)</div>
+          <div class="fmaps" id="featureMaps"></div>
+          <div class="insight">Each filter detects a <strong>different pattern</strong>. High values (bright) = "this pattern is here." Low = absent. Early layers find edges; deep layers find ears, eyes, fur.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="conn"></div>
+
+  <!-- ③ RELU -->
+  <div class="stage">
+    <div class="stage-head">
+      <div class="s-num s-relu">③</div>
+      <div class="stage-info"><h2>ReLU Activation</h2><p>Negative values from your image's conv → zeroed out</p></div>
+      <span class="stag t-relu">ReLU</span>
+    </div>
+    <div class="body">
+      <div class="row">
+        <div>
+          <div class="cl">Conv values sampled from your image (row of pixels)</div>
+          <div style="display:flex;gap:18px;flex-wrap:wrap;">
+            <div style="flex:1;">
+              <div style="font-size:0.7rem;color:var(--muted);margin-bottom:5px;font-family:'DM Mono',monospace;">Before</div>
+              <div class="bar-chart" id="barsBefore"></div>
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:0.7rem;color:var(--muted);margin-bottom:5px;font-family:'DM Mono',monospace;">After ReLU</div>
+              <div class="bar-chart" id="barsAfter"></div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn p" onclick="animRelu()">▶ Apply ReLU</button>
+            <span class="status">ReLU(x) = max(0, x)</span>
+          </div>
+          <div class="insight">Negatives become zero (grey bars). <strong>Positive signals survive</strong> unchanged. This is what makes deep networks able to learn complex patterns.</div>
+        </div>
+        <div>
+          <div class="cl">Feature map: your image before vs after ReLU</div>
+          <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap;">
+            <div style="text-align:center;">
+              <canvas id="reluB" width="100" height="100"></canvas>
+              <div style="font-family:'DM Mono',monospace;font-size:0.6rem;color:var(--muted);margin-top:4px;">with negatives</div>
+            </div>
+            <div style="font-size:1.3rem;color:var(--muted);">→</div>
+            <div style="text-align:center;">
+              <canvas id="reluA" width="100" height="100"></canvas>
+              <div style="font-family:'DM Mono',monospace;font-size:0.6rem;color:var(--muted);margin-top:4px;">after ReLU</div>
+            </div>
+          </div>
+          <div class="insight">Black = zeroed out. Bright = strong positive feature. Notice how <strong>edges of your image</strong> survive most clearly after ReLU.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="conn"></div>
+
+  <!-- ④ POOLING -->
+  <div class="stage">
+    <div class="stage-head">
+      <div class="s-num s-pool">④</div>
+      <div class="stage-info"><h2>Max Pooling</h2><p>Shrinks your image's feature map — keeps strongest signal per region</p></div>
+      <span class="stag t-pool">POOL</span>
+    </div>
+    <div class="body">
+      <div class="row">
+        <div>
+          <div class="cl">4×4 patch (from your image) → 2×2 pooled output</div>
+          <div style="display:flex;align-items:center;gap:18px;flex-wrap:wrap;">
+            <div>
+              <div style="font-size:0.68rem;color:var(--muted);margin-bottom:5px;font-family:'DM Mono',monospace;">4×4 input</div>
+              <div class="pool-grid" id="poolB" style="grid-template-columns:repeat(4,36px);"></div>
+            </div>
+            <div style="font-size:1.2rem;color:var(--muted);">→</div>
+            <div>
+              <div style="font-size:0.68rem;color:var(--muted);margin-bottom:5px;font-family:'DM Mono',monospace;">2×2 output</div>
+              <div class="pool-grid" id="poolA" style="grid-template-columns:repeat(2,36px);"></div>
+            </div>
+          </div>
+          <div class="btn-row">
+            <button class="btn p" onclick="animPool()">▶ Animate</button>
+            <button class="btn" onclick="initPool()">↺ Reset</button>
+            <span class="status" id="poolStatus">2×2 window slides</span>
+          </div>
+        </div>
+        <div>
+          <div class="cl">Your image at full vs pooled resolution</div>
+          <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;">
+            <div style="text-align:center;">
+              <canvas id="poolImgB" width="100" height="100"></canvas>
+              <div style="font-family:'DM Mono',monospace;font-size:0.6rem;color:var(--muted);margin-top:4px;">full resolution</div>
+            </div>
+            <div style="font-size:1.1rem;color:var(--muted);">→</div>
+            <div style="text-align:center;">
+              <canvas id="poolImgA" width="50" height="50"></canvas>
+              <div style="font-family:'DM Mono',monospace;font-size:0.6rem;color:var(--muted);margin-top:4px;">after pool (½ size)</div>
+            </div>
+          </div>
+          <div class="insight"><strong>75% fewer values</strong> with 2×2 pooling. A cat shifted 2 pixels right is still a cat — pooling gives the network this <strong>position tolerance</strong>.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="conn"></div>
+
+  <!-- ⑤ FULLY CONNECTED -->
+  <div class="stage">
+    <div class="stage-head">
+      <div class="s-num s-fc">⑤</div>
+      <div class="stage-info"><h2>Fully Connected Layer</h2><p>All features from your image combine into one decision</p></div>
+      <span class="stag t-fc">FC</span>
+    </div>
+    <div class="body">
+      <div class="row">
+        <div>
+          <div class="cl">Signal propagation (neurons lit = active)</div>
+          <canvas id="fcCanvas" width="380" height="210" style="width:100%;background:var(--off);border-radius:8px;border:1px solid var(--border);"></canvas>
+          <div class="btn-row">
+            <button class="btn p" onclick="animFC()">▶ Fire neurons</button>
+            <span class="status" id="fcStatus">forward pass</span>
+          </div>
+        </div>
+        <div>
+          <div class="cl">What happens in order</div>
+          <div style="display:flex;flex-direction:column;gap:11px;margin-top:4px;">
+            <div style="display:flex;gap:11px;align-items:flex-start;">
+              <div style="width:22px;height:22px;border-radius:50%;background:var(--purple-soft);color:var(--purple);display:flex;align-items:center;justify-content:center;font-size:0.68rem;font-weight:500;flex-shrink:0;border:1px solid #d8b4fe;font-family:'DM Mono',monospace;">1</div>
+              <div style="font-size:0.82rem;line-height:1.55;"><strong>Flatten</strong> — 3D feature maps become one long number list</div>
+            </div>
+            <div style="display:flex;gap:11px;align-items:flex-start;">
+              <div style="width:22px;height:22px;border-radius:50%;background:var(--purple-soft);color:var(--purple);display:flex;align-items:center;justify-content:center;font-size:0.68rem;font-weight:500;flex-shrink:0;border:1px solid #d8b4fe;font-family:'DM Mono',monospace;">2</div>
+              <div style="font-size:0.82rem;line-height:1.55;"><strong>Weighted multiply</strong> — every value connects to every next neuron with a learned weight</div>
+            </div>
+            <div style="display:flex;gap:11px;align-items:flex-start;">
+              <div style="width:22px;height:22px;border-radius:50%;background:var(--purple-soft);color:var(--purple);display:flex;align-items:center;justify-content:center;font-size:0.68rem;font-weight:500;flex-shrink:0;border:1px solid #d8b4fe;font-family:'DM Mono',monospace;">3</div>
+              <div style="font-size:0.82rem;line-height:1.55;"><strong>Output neuron</strong> — one per class, highest activation wins</div>
+            </div>
+          </div>
+          <div class="insight">The FC layer combines evidence: <em>"pointy ears + slit pupils + whiskers → <strong id="fcHint">87% cat</strong>"</em></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="conn"></div>
+
+  <!-- ⑥ OUTPUT -->
+  <div class="stage">
+    <div class="stage-head">
+      <div class="s-num s-out">⑥</div>
+      <div class="stage-info"><h2>Softmax Output</h2><p>Raw scores → probabilities → final answer for your image</p></div>
+      <span class="stag t-out">OUTPUT</span>
+    </div>
+    <div class="body">
+      <div class="row">
+        <div>
+          <div class="cl">Predicted class probabilities</div>
+          <div id="outputBars"></div>
+          <div class="btn-row">
+            <button class="btn p" onclick="animOutput()">▶ Predict</button>
+          </div>
+          <div id="resultBadge"></div>
+        </div>
+        <div>
+          <div class="cl">Full pipeline recap</div>
+          <div style="display:flex;flex-direction:column;gap:6px;margin-top:2px;">
+            <div style="display:flex;gap:8px;align-items:center;"><span class="stag t-inp" style="min-width:58px;text-align:center;">INPUT</span><span style="font-size:0.8rem;color:var(--muted);">3-channel pixel array</span></div>
+            <div style="width:1px;height:6px;background:var(--border);margin-left:26px;"></div>
+            <div style="display:flex;gap:8px;align-items:center;"><span class="stag t-conv" style="min-width:58px;text-align:center;">CONV</span><span style="font-size:0.8rem;color:var(--muted);">32 filters → 32 feature maps</span></div>
+            <div style="width:1px;height:6px;background:var(--border);margin-left:26px;"></div>
+            <div style="display:flex;gap:8px;align-items:center;"><span class="stag t-relu" style="min-width:58px;text-align:center;">ReLU</span><span style="font-size:0.8rem;color:var(--muted);">Negatives zeroed out</span></div>
+            <div style="width:1px;height:6px;background:var(--border);margin-left:26px;"></div>
+            <div style="display:flex;gap:8px;align-items:center;"><span class="stag t-pool" style="min-width:58px;text-align:center;">POOL</span><span style="font-size:0.8rem;color:var(--muted);">Maps shrunk by 2×</span></div>
+            <div style="width:1px;height:6px;background:var(--border);margin-left:26px;"></div>
+            <div style="display:flex;gap:8px;align-items:center;"><span class="stag t-conv" style="min-width:58px;text-align:center;">CONV×2</span><span style="font-size:0.8rem;color:var(--muted);">Deeper features (eyes, ears)</span></div>
+            <div style="width:1px;height:6px;background:var(--border);margin-left:26px;"></div>
+            <div style="display:flex;gap:8px;align-items:center;"><span class="stag t-fc" style="min-width:58px;text-align:center;">FC</span><span style="font-size:0.8rem;color:var(--muted);">All features → one decision</span></div>
+            <div style="width:1px;height:6px;background:var(--border);margin-left:26px;"></div>
+            <div style="display:flex;gap:8px;align-items:center;"><span class="stag t-out" style="min-width:58px;text-align:center;">OUTPUT</span><span style="font-size:0.8rem;color:var(--muted);">Softmax probability per class</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /pipeline -->
+
+<script>
+// ─────────────────────────────
+// STATE
+// ─────────────────────────────
+let currentImg = 'cat';
+let convRunning = false;
+let convTimer = null;
+let convPos = 0;
+let currentFilter = 'edge';
+
+const KERNELS = {
+  edge:    [[-1,-1,-1],[-1,8,-1],[-1,-1,-1]],
+  hEdge:   [[-1,-1,-1],[2,2,2],[-1,-1,-1]],
+  vEdge:   [[-1,2,-1],[-1,2,-1],[-1,2,-1]],
+  sharpen: [[0,-1,0],[-1,5,-1],[0,-1,0]],
+  blur:    [[1,1,1],[1,1,1],[1,1,1]],
+};
+
+const CLASSES = {
+  cat:  [['🐱 Cat',87],['🐈 Kitten',7],['🦁 Lion',3],['🐶 Dog',2],['🐦 Bird',1]],
+  dog:  [['🐶 Dog',91],['🐺 Wolf',5],['🦊 Fox',2],['🐱 Cat',1],['🐻 Bear',1]],
+  car:  [['🚗 Car',93],['🚕 Taxi',4],['🏎 Racer',2],['🚙 SUV',1],['🚌 Bus',0]],
+  bird: [['🐦 Bird',85],['🦅 Eagle',8],['🦜 Parrot',4],['🐤 Chick',2],['🐱 Cat',1]],
+};
+
+// ─────────────────────────────
+// DRAW IMAGES ON CANVAS
+// ─────────────────────────────
+function drawImg(ctx, type) {
+  ctx.clearRect(0,0,200,200);
+  ({cat:drawCat,dog:drawDog,car:drawCar,bird:drawBird})[type](ctx);
+}
+
+function drawCat(ctx) {
+  const g=ctx.createLinearGradient(0,0,200,200);g.addColorStop(0,'#e8f4f8');g.addColorStop(1,'#cce4ee');
+  ctx.fillStyle=g;ctx.fillRect(0,0,200,200);
+  ctx.fillStyle='#d4a96a';
+  ctx.beginPath();ctx.ellipse(100,135,55,42,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(100,78,40,36,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#c4955a';
+  ctx.beginPath();ctx.moveTo(68,53);ctx.lineTo(58,22);ctx.lineTo(84,45);ctx.fill();
+  ctx.beginPath();ctx.moveTo(132,53);ctx.lineTo(142,22);ctx.lineTo(116,45);ctx.fill();
+  ctx.fillStyle='#ff9999';
+  ctx.beginPath();ctx.moveTo(70,50);ctx.lineTo(63,28);ctx.lineTo(82,43);ctx.fill();
+  ctx.beginPath();ctx.moveTo(130,50);ctx.lineTo(137,28);ctx.lineTo(118,43);ctx.fill();
+  ctx.fillStyle='#4CAF50';
+  ctx.beginPath();ctx.ellipse(84,74,9,10,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(116,74,9,10,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#000';
+  ctx.beginPath();ctx.ellipse(84,74,4,8,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(116,74,4,8,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.7)';
+  ctx.beginPath();ctx.ellipse(87,71,2.5,2.5,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(119,71,2.5,2.5,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#ff6699';
+  ctx.beginPath();ctx.moveTo(100,85);ctx.lineTo(94,92);ctx.lineTo(106,92);ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,0.2)';ctx.lineWidth=1.2;
+  [[60,89,91,89],[58,94,89,92],[60,99,89,96]].forEach(([x1,y1,x2,y2])=>{ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();});
+  [[140,89,109,89],[142,94,111,92],[140,99,111,96]].forEach(([x1,y1,x2,y2])=>{ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();});
+  ctx.strokeStyle='#d4a96a';ctx.lineWidth=9;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(155,147);ctx.quadraticCurveTo(188,122,176,88);ctx.stroke();
+}
+
+function drawDog(ctx) {
+  const g=ctx.createLinearGradient(0,0,200,200);g.addColorStop(0,'#fdf6ec');g.addColorStop(1,'#f5e8d0');
+  ctx.fillStyle=g;ctx.fillRect(0,0,200,200);
+  ctx.fillStyle='#c8956c';
+  ctx.beginPath();ctx.ellipse(100,138,60,40,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(100,78,42,38,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#b07850';
+  ctx.beginPath();ctx.ellipse(100,93,20,14,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#a07040';
+  ctx.beginPath();ctx.ellipse(62,72,14,28,-0.3,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(138,72,14,28,0.3,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#3d2200';
+  ctx.beginPath();ctx.ellipse(83,69,8,9,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(117,69,8,9,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,0.7)';
+  ctx.beginPath();ctx.ellipse(86,66,3,3,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(120,66,3,3,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#111';
+  ctx.beginPath();ctx.ellipse(100,88,9,6,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#ff7799';
+  ctx.beginPath();ctx.ellipse(100,102,8,10,0,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#a07040';ctx.lineWidth=7;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(155,148);ctx.quadraticCurveTo(175,130,168,105);ctx.stroke();
+}
+
+function drawCar(ctx) {
+  const g=ctx.createLinearGradient(0,0,0,200);g.addColorStop(0,'#e8f0fb');g.addColorStop(1,'#c5d8f7');
+  ctx.fillStyle=g;ctx.fillRect(0,0,200,200);
+  ctx.fillStyle='#444';ctx.fillRect(0,158,200,42);
+  ctx.strokeStyle='#ffd700';ctx.lineWidth=2;ctx.setLineDash([18,12]);
+  ctx.beginPath();ctx.moveTo(0,180);ctx.lineTo(200,180);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='#e63946';
+  ctx.beginPath();ctx.roundRect(22,112,156,46,6);ctx.fill();
+  ctx.fillStyle='#c1121f';
+  ctx.beginPath();ctx.moveTo(52,112);ctx.lineTo(74,68);ctx.lineTo(128,68);ctx.lineTo(150,112);ctx.fill();
+  ctx.fillStyle='#a8dadc';
+  ctx.beginPath();ctx.moveTo(78,110);ctx.lineTo(90,73);ctx.lineTo(114,73);ctx.lineTo(126,110);ctx.fill();
+  ctx.strokeStyle='rgba(0,0,0,0.1)';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(102,73);ctx.lineTo(102,110);ctx.stroke();
+  ctx.fillStyle='#1a1a1a';
+  ctx.beginPath();ctx.ellipse(62,158,19,19,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(140,158,19,19,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#888';
+  ctx.beginPath();ctx.ellipse(62,158,8,8,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(140,158,8,8,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#ffee58';
+  ctx.beginPath();ctx.ellipse(172,126,9,6,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='rgba(220,80,80,0.8)';
+  ctx.beginPath();ctx.ellipse(28,126,7,5,0,0,Math.PI*2);ctx.fill();
+}
+
+function drawBird(ctx) {
+  const g=ctx.createLinearGradient(0,0,0,200);g.addColorStop(0,'#e8f5ff');g.addColorStop(1,'#c5e8ff');
+  ctx.fillStyle=g;ctx.fillRect(0,0,200,200);
+  ctx.strokeStyle='#8b5e3c';ctx.lineWidth=8;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(20,155);ctx.lineTo(180,155);ctx.stroke();
+  ctx.fillStyle='#e8490f';
+  ctx.beginPath();ctx.ellipse(65,108,52,20,-0.4,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(135,108,52,20,0.4,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#ff4d6d';
+  ctx.beginPath();ctx.ellipse(100,112,28,22,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.ellipse(100,76,20,20,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#ffb347';
+  ctx.beginPath();ctx.moveTo(118,76);ctx.lineTo(138,70);ctx.lineTo(118,82);ctx.fill();
+  ctx.fillStyle='#fff';
+  ctx.beginPath();ctx.ellipse(108,71,6,6,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#111';
+  ctx.beginPath();ctx.ellipse(109,71,3,3,0,0,Math.PI*2);ctx.fill();
+  ctx.fillStyle='#c1121f';
+  ctx.beginPath();ctx.moveTo(73,120);ctx.lineTo(44,136);ctx.lineTo(68,125);ctx.fill();
+  ctx.strokeStyle='#ffb347';ctx.lineWidth=2;
+  ctx.beginPath();ctx.moveTo(88,130);ctx.lineTo(88,155);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(112,130);ctx.lineTo(112,155);ctx.stroke();
+}
+
+// ─────────────────────────────
+// STAGE 1: PIXEL GRID
+// ─────────────────────────────
+function renderPixelGrid() {
+  const main = document.getElementById('mainCanvas');
+  const data = main.getContext('2d').getImageData(30, 30, 8, 8);
+  const grid = document.getElementById('pixelGrid');
+  grid.innerHTML = '';
+  for (let i = 0; i < 64; i++) {
+    const r=data.data[i*4], g2=data.data[i*4+1], b2=data.data[i*4+2];
+    const gray = Math.round(0.299*r+0.587*g2+0.114*b2);
+    const c = document.createElement('div');
+    c.className = 'px-cell';
+    c.style.background = `rgb(${r},${g2},${b2})`;
+    c.style.color = gray > 155 ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.85)';
+    c.textContent = gray;
+    c.title = `R:${r}  G:${g2}  B:${b2}  gray:${gray}`;
+    grid.appendChild(c);
+  }
+}
+
+// ─────────────────────────────
+// STAGE 2: KERNEL DISPLAY
+// ─────────────────────────────
+function renderKernel() {
+  const grid = document.getElementById('kernelDisp');
+  grid.innerHTML = '';
+  KERNELS[currentFilter].flat().forEach(v => {
+    const c = document.createElement('div');
+    c.className = 'k-cell ' + (v>0?'kp':v<0?'kn':'kz');
+    c.textContent = v;
+    grid.appendChild(c);
+  });
+}
+
+// ─────────────────────────────
+// STAGE 2: FEATURE MAPS (from actual image)
+// ─────────────────────────────
+function renderFeatureMaps() {
+  const container = document.getElementById('featureMaps');
+  container.innerHTML = '';
+  const main = document.getElementById('mainCanvas');
+  const imgData = main.getContext('2d').getImageData(0,0,200,200);
+
+  const filters = [
+    { k: KERNELS.edge,    label: 'Edges',    rgb:[26,86,219] },
+    { k: KERNELS.hEdge,   label: 'H-Edges',  rgb:[232,73,15] },
+    { k: KERNELS.vEdge,   label: 'V-Edges',  rgb:[10,124,89] },
+    { k: KERNELS.sharpen, label: 'Sharpen',  rgb:[107,33,168] },
+  ];
+
+  filters.forEach(({k, label, rgb}) => {
+    const c = document.createElement('canvas');
+    c.width = 64; c.height = 64;
+    const ctx = c.getContext('2d');
+    const km = k.flat();
+    const step = 3;
+    for (let row = 0; row < 20; row++) {
+      for (let col = 0; col < 20; col++) {
+        let sum = 0;
+        for (let kr = 0; kr < 3; kr++) {
+          for (let kc = 0; kc < 3; kc++) {
+            const pr = Math.min(row*step+kr,199), pc = Math.min(col*step+kc,199);
+            const idx = (pr*200+pc)*4;
+            const gray = (imgData.data[idx]+imgData.data[idx+1]+imgData.data[idx+2])/3;
+            sum += gray * km[kr*3+kc];
+          }
+        }
+        const v = Math.max(0, Math.min(255, Math.abs(sum)/8));
+        ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${(v/255).toFixed(2)})`;
+        ctx.fillRect(col*3.2, row*3.2, 3.5, 3.5);
+      }
+    }
+    const wrap = document.createElement('div');
+    wrap.className = 'fmap-item';
+    wrap.appendChild(c);
+    const cap = document.createElement('div');
+    cap.className = 'fmap-cap'; cap.textContent = label;
+    wrap.appendChild(cap);
+    container.appendChild(wrap);
+  });
+}
+
+// ─────────────────────────────
+// STAGE 2: CONV ANIMATION (sliding window on actual image)
+// ─────────────────────────────
+const SCAN_STEPS = [];
+for (let r=0;r<10;r++) for (let c=0;c<10;c++) SCAN_STEPS.push([r*18,c*18]);
+
+function toggleConv() {
+  if (convRunning) {
+    clearInterval(convTimer); convRunning=false;
+    document.getElementById('convBtn').textContent = '▶ Animate scan';
+    document.getElementById('convStatus').textContent = 'paused';
+  } else {
+    convRunning=true;
+    document.getElementById('convBtn').textContent = '⏸ Pause';
+    convTimer = setInterval(stepConv, 100);
+  }
+}
+
+function resetConv() {
+  clearInterval(convTimer); convRunning=false; convPos=0;
+  document.getElementById('convBtn').textContent = '▶ Animate scan';
+  document.getElementById('convStatus').textContent = 'press to start';
+  document.getElementById('mathLine').innerHTML = 'position (0,0) — weighted sum = <em>0</em>';
+  const src=document.getElementById('convCanvas');
+  src.getContext('2d').drawImage(document.getElementById('mainCanvas'),0,0,200,200);
+}
+
+function stepConv() {
+  if (convPos >= SCAN_STEPS.length) {
+    clearInterval(convTimer); convRunning=false;
+    document.getElementById('convBtn').textContent = '▶ Animate scan';
+    document.getElementById('convStatus').textContent = '✓ feature map complete';
+    return;
+  }
+  const [row, col] = SCAN_STEPS[convPos];
+  const main = document.getElementById('mainCanvas');
+  const src = document.getElementById('convCanvas');
+  const ctx = src.getContext('2d');
+  ctx.drawImage(main,0,0,200,200);
+
+  // Highlight rectangle
+  ctx.strokeStyle='#1a56db'; ctx.lineWidth=2.5;
+  ctx.strokeRect(col,row,36,36);
+  ctx.fillStyle='rgba(26,86,219,0.13)';
+  ctx.fillRect(col,row,36,36);
+
+  // Compute weighted sum at this position
+  const patch = main.getContext('2d').getImageData(col,row,3,3);
+  const km = KERNELS[currentFilter].flat();
+  let sum = 0;
+  for (let i=0;i<9;i++) {
+    const gray = (patch.data[i*4]+patch.data[i*4+1]+patch.data[i*4+2])/3;
+    sum += gray*km[i];
+  }
+  const val = Math.round(sum/3);
+  document.getElementById('mathLine').innerHTML = `position (${Math.floor(row/18)},${Math.floor(col/18)}) — weighted sum = <em>${val}</em>`;
+  document.getElementById('convStatus').textContent = `step ${convPos+1} of ${SCAN_STEPS.length}`;
+  convPos++;
+}
+
+// ─────────────────────────────
+// STAGE 3: RELU
+// ─────────────────────────────
+function getConvRow() {
+  const main = document.getElementById('mainCanvas');
+  const data = main.getContext('2d').getImageData(40,100,18,1);
+  const km = KERNELS.edge.flat();
+  const vals = [];
+  for (let i=0;i<16;i++) {
+    let sum=0;
+    for (let k=0;k<3;k++) {
+      const idx = Math.min(i+k,17)*4;
+      const gray=(data.data[idx]+data.data[idx+1]+data.data[idx+2])/3;
+      sum+=gray*(km[k+3]);
+    }
+    vals.push(Math.round(sum/4));
+  }
+  return vals;
+}
+
+function renderBars(id, vals, relu) {
+  const wrap=document.getElementById(id); wrap.innerHTML='';
+  const mx=Math.max(...vals.map(Math.abs),1);
+  vals.forEach(v=>{
+    const disp=relu?Math.max(0,v):v;
+    const item=document.createElement('div'); item.className='bar-item';
+    const bar=document.createElement('div'); bar.className='bar';
+    bar.style.height=(Math.abs(disp)/mx*76)+'px';
+    bar.style.background=disp>0?'#1a56db':disp<0?'#e8490f':'#e0ddd8';
+    bar.style.opacity=disp===0&&relu?'0.25':'1';
+    const lbl=document.createElement('div'); lbl.className='bar-val'; lbl.textContent=disp;
+    item.appendChild(bar); item.appendChild(lbl);
+    wrap.appendChild(item);
+  });
+}
+
+function animRelu() {
+  const vals=getConvRow();
+  renderBars('barsAfter',vals,true);
+  renderRelu2d(true);
+}
+
+function renderRelu2d(apply) {
+  const main=document.getElementById('mainCanvas');
+  const imgData=main.getContext('2d').getImageData(0,0,200,200);
+  const km=KERNELS.edge.flat();
+  ['reluB','reluA'].forEach((id,isA)=>{
+    const c=document.getElementById(id);
+    const ctx=c.getContext('2d');
+    for (let row=0;row<10;row++) {
+      for (let col=0;col<10;col++) {
+        const sr=row*20,sc=col*20; let sum=0;
+        for (let kr=0;kr<3;kr++) for (let kc=0;kc<3;kc++) {
+          const pr=Math.min(sr+kr,199),pc=Math.min(sc+kc,199);
+          const idx=(pr*200+pc)*4;
+          const g=(imgData.data[idx]+imgData.data[idx+1]+imgData.data[idx+2])/3;
+          sum+=g*km[kr*3+kc];
+        }
+        let v=sum/4;
+        if (isA&&apply) v=Math.max(0,v);
+        const lum=Math.max(0,Math.min(255,v+128));
+        ctx.fillStyle=`rgb(${lum},${lum},${lum})`;
+        ctx.fillRect(col*10,row*10,10,10);
+      }
+    }
+  });
+}
+
+// ─────────────────────────────
+// STAGE 4: POOLING
+// ─────────────────────────────
+let POOL_V = [];
+
+function initPool() {
+  const main=document.getElementById('mainCanvas');
+  const data=main.getContext('2d').getImageData(80,80,4,4);
+  POOL_V=[];
+  for (let i=0;i<16;i++) {
+    const r=data.data[i*4],g2=data.data[i*4+1],b2=data.data[i*4+2];
+    POOL_V.push(Math.round((r+g2+b2)/3/25.5));
+  }
+  renderPool('poolB',POOL_V,4,-1);
+  renderPool('poolA',[0,0,0,0],2,-1,true);
+  // pool img
+  const b=document.getElementById('poolImgB');
+  b.getContext('2d').drawImage(main,0,0,100,100);
+  document.getElementById('poolImgA').getContext('2d').drawImage(main,0,0,50,50);
+  document.getElementById('poolStatus').textContent='2×2 window slides';
+}
+
+function renderPool(id,vals,cols,hiRegion,blank) {
+  const g=document.getElementById(id); g.innerHTML='';
+  g.style.gridTemplateColumns=`repeat(${cols},36px)`;
+  const mx=Math.max(...vals,1);
+  vals.forEach((v,i)=>{
+    const row=Math.floor(i/cols),col=i%cols;
+    const reg=Math.floor(row/2)*2+Math.floor(col/2);
+    const hi=reg===hiRegion;
+    const c=document.createElement('div'); c.className='pool-cell';
+    const alpha=blank?0.04:v/mx;
+    c.style.background=hi?`rgba(10,124,89,${alpha*0.5+0.18})`:`rgba(26,86,219,${alpha*0.28+0.05})`;
+    c.style.border=`1.5px solid ${hi?'#0a7c59':'rgba(26,86,219,0.18)'}`;
+    c.style.color=blank?'#ccc':hi?'#0a7c59':'#1a56db';
+    c.textContent=blank?'?':v;
+    g.appendChild(c);
+  });
+}
+
+let poolPos=0;
+function animPool() {
+  poolPos=0; initPool();
+  const results=[];
+  for (let wr=0;wr<2;wr++) for (let wc=0;wc<2;wc++) {
+    const cells=[POOL_V[wr*2*4+wc*2],POOL_V[wr*2*4+wc*2+1],POOL_V[(wr*2+1)*4+wc*2],POOL_V[(wr*2+1)*4+wc*2+1]];
+    results.push(Math.max(...cells));
+  }
+  const iv=setInterval(()=>{
+    if(poolPos>3){clearInterval(iv);renderPool('poolA',results,2,-1);document.getElementById('poolStatus').textContent='✓ 4 windows → 4 max values';return;}
+    renderPool('poolB',POOL_V,4,poolPos);
+    const part=results.map((v,i)=>i<poolPos?v:0);
+    renderPool('poolA',part,2,poolPos-1,poolPos===0);
+    const reg=poolPos;
+    const r2=(reg>>1)*2,c2=(reg&1)*2;
+    const cells=[POOL_V[r2*4+c2],POOL_V[r2*4+c2+1],POOL_V[(r2+1)*4+c2],POOL_V[(r2+1)*4+c2+1]];
+    document.getElementById('poolStatus').textContent=`window ${poolPos+1}/4: max[${cells.join(',')}] = ${Math.max(...cells)}`;
+    poolPos++;
+  },900);
+}
+
+// ─────────────────────────────
+// STAGE 5: FC
+// ─────────────────────────────
+function drawFC(t) {
+  const c=document.getElementById('fcCanvas');
+  const ctx=c.getContext('2d');
+  const W=380,H=210;
+  ctx.clearRect(0,0,W,H);
+  ctx.fillStyle='#f7f6f3'; ctx.fillRect(0,0,W,H);
+
+  const layers=[
+    {x:48,n:7,label:'Flatten'},
+    {x:145,n:5,label:'FC 256'},
+    {x:242,n:4,label:'FC 128'},
+    {x:332,n:4,label:'Output'},
+  ];
+  layers.forEach(l=>{
+    l.ys=[]; const sp=H/(l.n+1);
+    for(let i=0;i<l.n;i++) l.ys.push(sp*(i+1));
+  });
+
+  // Connections
+  for(let li=0;li<layers.length-1;li++){
+    const l=layers[li],nl=layers[li+1];
+    l.ys.forEach(y1=>nl.ys.forEach(y2=>{
+      const a=t*(0.15+Math.random()*0.4);
+      ctx.strokeStyle=`rgba(26,86,219,${a*0.22+0.03})`;
+      ctx.lineWidth=t>0.5?1:0.6;
+      ctx.beginPath();ctx.moveTo(l.x,y1);ctx.lineTo(nl.x,y2);ctx.stroke();
+    }));
+  }
+  // Nodes
+  const cols=['#1a56db','#6b21a8','#0a7c59','#e8490f'];
+  layers.forEach((l,li)=>{
+    l.ys.forEach((y,ni)=>{
+      const act=t*(0.3+(ni*0.13)%0.65);
+      ctx.beginPath();ctx.arc(l.x,y,9,0,Math.PI*2);
+      ctx.fillStyle=t>0?`rgba(26,86,219,${act*0.7+0.08})`:'#fff';
+      ctx.fill();
+      ctx.strokeStyle=cols[li]; ctx.lineWidth=1.5; ctx.stroke();
+    });
+    ctx.fillStyle='#888580'; ctx.font='8px DM Mono'; ctx.textAlign='center';
+    ctx.fillText(l.label,l.x,H-5);
+  });
+}
+
+function animFC() {
+  let t=0;
+  document.getElementById('fcStatus').textContent='propagating...';
+  const iv=setInterval(()=>{
+    drawFC(t); t+=0.055;
+    if(t>=1){clearInterval(iv);drawFC(1);document.getElementById('fcStatus').textContent='✓ prediction ready';}
+  },40);
+}
+
+// ─────────────────────────────
+// STAGE 6: OUTPUT
+// ─────────────────────────────
+function buildOutput() {
+  const cont=document.getElementById('outputBars'); cont.innerHTML='';
+  document.getElementById('resultBadge').innerHTML='';
+  const cls=CLASSES[currentImg];
+  document.getElementById('fcHint').textContent=`${cls[0][1]}% ${cls[0][0].split(' ')[1]||cls[0][0]}`;
+  cls.forEach(([lbl,pct],i)=>{
+    const row=document.createElement('div'); row.className='out-row';
+    const l=document.createElement('div'); l.className='out-lbl'; l.textContent=lbl;
+    const tr=document.createElement('div'); tr.className='out-track';
+    const fi=document.createElement('div'); fi.className='out-fill'; fi.id='ofill'+i;
+    fi.style.width='0%';
+    fi.style.background=i===0?'linear-gradient(90deg,#1a56db,#6b21a8)':'#d1d5db';
+    fi.style.color=i===0?'white':'#6b7280';
+    fi.textContent=pct+'%';
+    tr.appendChild(fi); row.appendChild(l); row.appendChild(tr); cont.appendChild(row);
+  });
+}
+
+function animOutput() {
+  buildOutput();
+  const cls=CLASSES[currentImg];
+  setTimeout(()=>{
+    cls.forEach(([_,pct],i)=>{
+      const fi=document.getElementById('ofill'+i);
+      if(fi) fi.style.width=pct+'%';
+    });
+    setTimeout(()=>{
+      const badge=document.getElementById('resultBadge');
+      badge.innerHTML=`<div class="result-badge" style="background:#eef3fd;border-color:#c5d8f7;color:#1a56db;">✓ Predicted: ${cls[0][0]} — ${cls[0][1]}% confidence</div>`;
+    },1300);
+  },100);
+}
+
+// ─────────────────────────────
+// SWITCH IMAGE — REFRESH EVERYTHING
+// ─────────────────────────────
+function switchImage(type) {
+  currentImg=type;
+  document.querySelectorAll('.img-btn').forEach(b=>b.classList.toggle('active',b.dataset.img===type));
+
+  const main=document.getElementById('mainCanvas');
+  drawImg(main.getContext('2d'),type);
+
+  renderPixelGrid();
+
+  // Copy to conv canvas
+  const convC=document.getElementById('convCanvas');
+  convC.getContext('2d').drawImage(main,0,0,200,200);
+  resetConv();
+  renderKernel();
+  renderFeatureMaps();
+
+  // RELU
+  const vals=getConvRow();
+  renderBars('barsBefore',vals,false);
+  renderBars('barsAfter',vals,false);
+  renderRelu2d(false);
+
+  // Pool
+  initPool();
+
+  // FC
+  drawFC(0);
+
+  // Output
+  buildOutput();
+}
+
+// Filter tabs
+document.getElementById('filterTabs').addEventListener('click',e=>{
+  const tab=e.target.closest('.f-tab'); if(!tab) return;
+  currentFilter=tab.dataset.filter;
+  document.querySelectorAll('.f-tab').forEach(t=>t.classList.remove('active'));
+  tab.classList.add('active');
+  renderKernel(); renderFeatureMaps(); resetConv();
+});
+
+// Image buttons
+document.querySelectorAll('.img-btn').forEach(btn=>{
+  btn.addEventListener('click',()=>switchImage(btn.dataset.img));
+});
+
+// Init
+window.addEventListener('load',()=>switchImage('cat'));
+</script>
+</body>
+</html>
