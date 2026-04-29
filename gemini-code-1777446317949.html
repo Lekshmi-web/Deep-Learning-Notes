@@ -1,0 +1,207 @@
+<style>
+  :root {
+    --primary: #0ea5e9;
+    --primary-hover: #0284c7;
+    --bg-main: #f8fafc;
+    --card-bg: #ffffff;
+    --code-bg: #0f172a;
+    --text-main: #1e293b;
+    --text-muted: #64748b;
+    --success: #22c55e;
+    --danger: #ef4444;
+    --border: #e2e8f0;
+  }
+
+  .wls-container {
+    padding: 28px;
+    background: var(--card-bg);
+    border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    border: 1px solid var(--border);
+    max-width: 650px;
+    font-family: 'Inter', -apple-system, sans-serif;
+    color: var(--text-main);
+    margin: 20px auto;
+  }
+
+  .wls-header h3 { margin: 0 0 20px 0; font-size: 20px; font-weight: 700; color: var(--primary); }
+
+  /* Controls Grid */
+  .wls-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 24px; }
+  .wls-input-grp label { display: block; font-size: 11px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; margin-bottom: 6px; }
+  .wls-input-grp input { 
+    width: 100%; border: 2px solid var(--border); border-radius: 8px; padding: 10px; 
+    font-family: 'JetBrains Mono', monospace; outline: none; transition: 0.2s;
+  }
+  .wls-input-grp input:focus { border-color: var(--primary); }
+
+  /* Code Block */
+  .wls-editor { 
+    background: var(--code-bg); color: #f8fafc; border-radius: 12px; padding: 20px; 
+    font-family: 'JetBrains Mono', monospace; font-size: 14px; line-height: 1.8; margin-bottom: 20px;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+  }
+  .wls-line { transition: background 0.3s; padding: 0 8px; border-radius: 4px; }
+  .wls-line.active { background: rgba(14, 165, 233, 0.2); border-left: 3px solid var(--primary); }
+  .hl-kw { color: #c678dd; } 
+  .hl-fn { color: #61afef; } 
+  .hl-val { color: #d19a66; } 
+
+  /* Variable Tracker */
+  .wls-vars { display: flex; gap: 12px; margin-bottom: 20px; }
+  .wls-var-card { 
+    flex: 1; background: #f1f5f9; padding: 10px; border-radius: 10px; text-align: center;
+    border: 1px solid var(--border);
+  }
+  .wls-var-card .vn { font-size: 10px; font-weight: 700; color: var(--text-muted); text-transform: uppercase; }
+  .wls-var-card .vv { font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 700; color: var(--primary); }
+
+  /* Console Output */
+  .wls-term { 
+    background: #1e293b; border-radius: 8px; padding: 15px; font-family: 'JetBrains Mono', monospace; 
+    font-size: 13px; color: #10b981; border: 1px solid #334155; height: 120px; overflow-y: auto;
+  }
+
+  /* Actions */
+  .wls-actions { display: flex; gap: 10px; margin-top: 24px; }
+  .btn { 
+    flex: 1; padding: 12px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer;
+    transition: 0.2s; font-size: 13px;
+  }
+  .btn-primary { background: var(--primary); color: white; }
+  .btn-primary:hover { background: var(--primary-hover); }
+  .btn-outline { background: white; border: 2px solid var(--border); color: var(--text-main); }
+  .btn-outline:hover { border-color: var(--primary); color: var(--primary); }
+  .btn:disabled { opacity: 0.3; cursor: not-allowed; }
+</style>
+
+<div class="wls-container">
+  <div class="wls-header"><h3>While Loop Debugger</h3></div>
+  
+  <div class="wls-grid">
+    <div class="wls-input-grp"><label>Start</label><input type="number" id="ws-start" value="1"></div>
+    <div class="wls-input-grp"><label>Limit</label><input type="number" id="ws-limit" value="5"></div>
+    <div class="wls-input-grp"><label>Step</label><input type="number" id="ws-step" value="1"></div>
+  </div>
+
+  <div class="wls-editor">
+    <div class="wls-line" id="wl-init">count = <span class="hl-val" id="cd-start">1</span></div>
+    <div class="wls-line" id="wl-cond"><span class="hl-kw">while</span> count <= <span class="hl-val" id="cd-limit">5</span>:</div>
+    <div class="wls-line" id="wl-print">&nbsp;&nbsp;&nbsp;&nbsp;<span class="hl-fn">print</span>(count)</div>
+    <div class="wls-line" id="wl-incr">&nbsp;&nbsp;&nbsp;&nbsp;count += <span class="hl-val" id="cd-step">1</span></div>
+  </div>
+
+  <div class="wls-vars">
+    <div class="wls-var-card"><div class="vn">count</div><div class="vv" id="vv-count">—</div></div>
+    <div class="wls-var-card"><div class="vn">condition</div><div class="vv" id="vv-cond">—</div></div>
+    <div class="wls-var-card"><div class="vn">iteration</div><div class="vv" id="vv-iter">—</div></div>
+  </div>
+
+  <div class="wls-term" id="wls-log"># Terminal ready...</div>
+
+  <div class="wls-actions">
+    <button class="btn btn-primary" onclick="wlsStart()" id="wls-btn-start">Start</button>
+    <button class="btn btn-outline" onclick="wlsNext()" id="wls-btn-next" disabled>Step Forward</button>
+    <button class="btn btn-outline" onclick="wlsAuto()" id="wls-btn-auto" disabled>Auto-Run</button>
+    <button class="btn btn-outline" onclick="wlsReset()">Reset</button>
+  </div>
+</div>
+
+<script>
+  let wCount, wLimit, wStep, wIter, wDone, wTimer, wPhase;
+
+  function syncInputs() {
+    document.getElementById('cd-start').innerText = document.getElementById('ws-start').value;
+    document.getElementById('cd-limit').innerText = document.getElementById('ws-limit').value;
+    document.getElementById('cd-step').innerText = document.getElementById('ws-step').value;
+  }
+  ['ws-start','ws-limit','ws-step'].forEach(id => document.getElementById(id).addEventListener('input', syncInputs));
+
+  function highlight(id) {
+    ['wl-init','wl-cond','wl-print','wl-incr'].forEach(l => document.getElementById(l).classList.remove('active'));
+    if (id) document.getElementById(id).classList.add('active');
+  }
+
+  function wlsStart() {
+    syncInputs();
+    wCount = parseInt(document.getElementById('ws-start').value) || 0;
+    wLimit = parseInt(document.getElementById('ws-limit').value) || 0;
+    wStep = parseInt(document.getElementById('ws-step').value) || 1;
+    wIter = 0; wDone = false; wPhase = 1;
+
+    document.getElementById('wls-btn-start').disabled = true;
+    document.getElementById('wls-btn-next').disabled = false;
+    document.getElementById('wls-btn-auto').disabled = false;
+    document.getElementById('wls-log').innerHTML = '>>> count initialized to ' + wCount;
+    document.getElementById('vv-count').innerText = wCount;
+    document.getElementById('vv-iter').innerText = '0';
+    
+    highlight('wl-init');
+  }
+
+  function wlsNext() {
+    if (wDone) return;
+    const log = document.getElementById('wls-log');
+
+    if (wPhase === 1) { // Check Condition
+      const isTrue = wCount <= wLimit;
+      highlight('wl-cond');
+      document.getElementById('vv-cond').innerText = isTrue ? 'True' : 'False';
+      document.getElementById('vv-cond').style.color = isTrue ? 'var(--success)' : 'var(--danger)';
+      
+      if (!isTrue) {
+        log.innerHTML += `<br><span style="color:var(--danger)">>>> ${wCount} <= ${wLimit} is False. Exiting.</span>`;
+        finish();
+      } else {
+        wPhase = 2;
+      }
+    } 
+    else if (wPhase === 2) { // Print
+      wIter++;
+      highlight('wl-print');
+      document.getElementById('vv-iter').innerText = wIter;
+      log.innerHTML += `<br><span style="color:#94a3b8">out:</span> ${wCount}`;
+      wPhase = 3;
+    } 
+    else if (wPhase === 3) { // Increment
+      highlight('wl-incr');
+      const old = wCount;
+      wCount += wStep;
+      document.getElementById('vv-count').innerText = wCount;
+      log.innerHTML += `<br>>>> count updated: ${old} -> ${wCount}`;
+      wPhase = 1;
+    }
+    log.scrollTop = log.scrollHeight;
+  }
+
+  function wlsAuto() {
+    document.getElementById('wls-btn-auto').disabled = true;
+    document.getElementById('wls-btn-next').disabled = true;
+    wTimer = setInterval(() => {
+      if (wDone) clearInterval(wTimer);
+      else wlsNext();
+    }, 600);
+  }
+
+  function finish() {
+    wDone = true;
+    highlight(null);
+    document.getElementById('wls-btn-next').disabled = true;
+    document.getElementById('wls-btn-auto').disabled = true;
+    document.getElementById('wls-log').innerHTML += `<br><span style="color:#61afef">*** Loop Finished ***</span>`;
+  }
+
+  function wlsReset() {
+    clearInterval(wTimer);
+    wDone = false; wPhase = 0;
+    document.getElementById('wls-btn-start').disabled = false;
+    document.getElementById('wls-btn-next').disabled = true;
+    document.getElementById('wls-btn-auto').disabled = true;
+    highlight(null);
+    document.getElementById('wls-log').innerHTML = '# Console cleared.';
+    document.getElementById('vv-count').innerText = '—';
+    document.getElementById('vv-cond').innerText = '—';
+    document.getElementById('vv-iter').innerText = '—';
+    syncInputs();
+  }
+</script>
