@@ -1,0 +1,175 @@
+
+<h2 class="sr-only">Gradient descent animation — a ball rolls down a U-shaped cost curve showing how the model minimizes error step by step.</h2>
+<style>
+  #gd-wrap { padding: 1rem 0; }
+  #gd-canvas { width:100%; height:260px; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); display:block; }
+  .controls { display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:12px; }
+  .ctrl-group { display:flex; align-items:center; gap:8px; font-size:13px; color:var(--color-text-secondary); }
+  .ctrl-group span { font-weight:500; color:var(--color-text-primary); min-width:28px; font-size:13px; }
+  input[type=range] { width:90px; }
+  .info-row { display:flex; gap:20px; margin-top:10px; flex-wrap:wrap; }
+  .info-pill { font-size:12px; color:var(--color-text-secondary); }
+  .info-pill b { color:var(--color-text-primary); font-weight:500; }
+</style>
+<div id="gd-wrap">
+  <div class="controls">
+    <div class="ctrl-group">Learning rate <input type="range" min="1" max="20" value="8" step="1" id="lr-slider"> <span id="lr-out">0.08</span></div>
+    <button onclick="startGD()" id="run-btn">Run</button>
+    <button onclick="resetGD()">Reset</button>
+  </div>
+  <canvas id="gd-canvas" style="margin-top:12px;"></canvas>
+  <div class="info-row">
+    <div class="info-pill">Iteration: <b id="iter-out">0</b></div>
+    <div class="info-pill">Weight (m): <b id="w-out">—</b></div>
+    <div class="info-pill">Cost (MSE): <b id="cost-out">—</b></div>
+    <div class="info-pill" id="status-out"></div>
+  </div>
+</div>
+<script>
+const gdc = document.getElementById('gd-canvas');
+const gctx = gdc.getContext('2d');
+let gdpr = window.devicePixelRatio || 1;
+let animId = null, iter = 0, w = -2.8, running = false, history = [], converged = false;
+
+const TRUE_M = 1.0;
+
+function costFn(x) { return (x - TRUE_M)**2 * 3 + 0.1; }
+function gradFn(x) { return 2 * (x - TRUE_M) * 3; }
+
+function getLR() { return parseInt(document.getElementById('lr-slider').value) * 0.01; }
+
+function gdResize() {
+  const W2 = gdc.parentElement.offsetWidth;
+  gdc.width = W2 * gdpr;
+  gdc.height = 260 * gdpr;
+  gctx.scale(gdpr, gdpr);
+  gdraw();
+}
+
+function isDark2() { return window.matchMedia('(prefers-color-scheme: dark)').matches; }
+
+function gdraw() {
+  const W = gdc.width/gdpr, H = gdc.height/gdpr;
+  gctx.clearRect(0, 0, W, H);
+  const dark = isDark2();
+
+  const pad = { l:48, r:24, t:24, b:40 };
+  const cW = W - pad.l - pad.r, cH = H - pad.t - pad.b;
+
+  const xMin = -3, xMax = 3;
+  const yMin = 0, yMax = 27;
+
+  function toX(v) { return pad.l + (v - xMin)/(xMax-xMin) * cW; }
+  function toY(v) { return pad.t + (1-(v-yMin)/(yMax-yMin)) * cH; }
+
+  const gridC = dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const axisC = dark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)';
+  const textC = dark ? 'rgba(255,255,255,0.5)' : 'rgba(0,0,0,0.45)';
+  const curveC = '#534AB7';
+  const ballC = '#1D9E75';
+  const trailC = dark ? 'rgba(186,117,23,0.5)' : 'rgba(186,117,23,0.45)';
+
+  for (let gx = xMin; gx <= xMax; gx++) {
+    const sx = toX(gx);
+    gctx.beginPath(); gctx.moveTo(sx, pad.t); gctx.lineTo(sx, pad.t+cH);
+    gctx.strokeStyle = gridC; gctx.lineWidth=0.5; gctx.stroke();
+    gctx.fillStyle = textC; gctx.font = '11px sans-serif'; gctx.textAlign='center';
+    gctx.fillText(gx, sx, pad.t+cH+14);
+  }
+  for (let gy = 0; gy <= 25; gy+=5) {
+    const sy = toY(gy);
+    gctx.beginPath(); gctx.moveTo(pad.l, sy); gctx.lineTo(pad.l+cW, sy);
+    gctx.strokeStyle = gridC; gctx.lineWidth=0.5; gctx.stroke();
+    gctx.fillStyle = textC; gctx.font='11px sans-serif'; gctx.textAlign='right';
+    gctx.fillText(gy, pad.l-6, sy+4);
+  }
+
+  gctx.beginPath(); gctx.moveTo(pad.l, pad.t); gctx.lineTo(pad.l, pad.t+cH);
+  gctx.strokeStyle = axisC; gctx.lineWidth=1; gctx.stroke();
+  gctx.beginPath(); gctx.moveTo(pad.l, pad.t+cH); gctx.lineTo(pad.l+cW, pad.t+cH);
+  gctx.stroke();
+
+  gctx.fillStyle = textC; gctx.font='11px sans-serif'; gctx.textAlign='center';
+  gctx.fillText('Weight (m)', pad.l + cW/2, H-4);
+
+  gctx.beginPath();
+  for (let x = xMin; x <= xMax; x += 0.05) {
+    const px = toX(x), py = toY(costFn(x));
+    x === xMin ? gctx.moveTo(px, py) : gctx.lineTo(px, py);
+  }
+  gctx.strokeStyle = curveC; gctx.lineWidth=2.5; gctx.stroke();
+
+  if (history.length > 1) {
+    gctx.beginPath();
+    history.forEach((pt, i) => {
+      const px = toX(pt.w), py = toY(pt.c);
+      i===0 ? gctx.moveTo(px, py) : gctx.lineTo(px, py);
+    });
+    gctx.strokeStyle = trailC; gctx.lineWidth=1.5; gctx.stroke();
+  }
+
+  const bx = toX(w), by = toY(costFn(w));
+  gctx.beginPath(); gctx.arc(bx, by, 7, 0, Math.PI*2);
+  gctx.fillStyle = ballC; gctx.fill();
+  gctx.strokeStyle = dark ? 'rgba(255,255,255,0.3)':'white';
+  gctx.lineWidth=2; gctx.stroke();
+
+  const minX = toX(TRUE_M);
+  gctx.beginPath(); gctx.moveTo(minX, pad.t); gctx.lineTo(minX, pad.t+cH);
+  gctx.strokeStyle = 'rgba(216,90,48,0.5)'; gctx.lineWidth=1;
+  gctx.setLineDash([4,4]); gctx.stroke(); gctx.setLineDash([]);
+  gctx.fillStyle = 'rgba(216,90,48,0.7)'; gctx.font='11px sans-serif';
+  gctx.textAlign='left'; gctx.fillText('optimal', minX+4, pad.t+14);
+}
+
+function step() {
+  const lr = getLR();
+  const grad = gradFn(w);
+  w = w - lr * grad;
+  iter++;
+  history.push({ w, c: costFn(w) });
+  document.getElementById('iter-out').textContent = iter;
+  document.getElementById('w-out').textContent = w.toFixed(3);
+  document.getElementById('cost-out').textContent = costFn(w).toFixed(4);
+
+  if (Math.abs(w - TRUE_M) < 0.005 || iter > 200) {
+    converged = true; running = false;
+    document.getElementById('status-out').innerHTML = iter>200
+      ? '<span style="color:var(--color-text-danger)">Did not converge — try a smaller learning rate</span>'
+      : '<span style="color:var(--color-text-success)">Converged!</span>';
+    document.getElementById('run-btn').textContent = 'Run';
+    gdraw(); return;
+  }
+  gdraw();
+  animId = setTimeout(step, 80);
+}
+
+function startGD() {
+  if (converged) { resetGD(); return; }
+  if (running) {
+    running = false; clearTimeout(animId);
+    document.getElementById('run-btn').textContent = 'Run';
+    return;
+  }
+  running = true;
+  document.getElementById('run-btn').textContent = 'Pause';
+  document.getElementById('status-out').textContent = '';
+  step();
+}
+
+function resetGD() {
+  clearTimeout(animId); running = false; converged = false;
+  w = -2.8; iter = 0; history = [];
+  ['iter-out','w-out','cost-out'].forEach((id,i)=>{ document.getElementById(id).textContent = i===0?'0':'—'; });
+  document.getElementById('status-out').textContent = '';
+  document.getElementById('run-btn').textContent = 'Run';
+  gdraw();
+}
+
+document.getElementById('lr-slider').addEventListener('input', function() {
+  document.getElementById('lr-out').textContent = (parseInt(this.value)*0.01).toFixed(2);
+});
+
+window.addEventListener('resize', gdResize);
+gdResize();
+</script>

@@ -1,0 +1,113 @@
+
+<h2 class="sr-only">Simple linear regression interactive demo — click the chart to add data points and see the best-fit line update in real time.</h2>
+<style>
+  #reg-wrap { padding: 1rem 0; }
+  #reg-canvas { width:100%; height:260px; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); cursor:crosshair; display:block; }
+  .stat-row { display:flex; gap:24px; flex-wrap:wrap; margin-top:12px; align-items:center; }
+  .stat { font-size:13px; color:var(--color-text-secondary); }
+  .stat span { font-weight:500; color:var(--color-text-primary); font-size:14px; }
+  .hint { font-size:12px; color:var(--color-text-secondary); margin-bottom:10px; }
+  button { font-size:13px; padding:4px 14px; margin-left:auto; }
+</style>
+<div id="reg-wrap">
+  <p class="hint">Click anywhere on the chart to add data points. The best-fit line updates instantly.</p>
+  <canvas id="reg-canvas"></canvas>
+  <div class="stat-row">
+    <div class="stat">Points: <span id="n-pts">0</span></div>
+    <div class="stat">Slope (m): <span id="m-val">—</span></div>
+    <div class="stat">Intercept (b): <span id="b-val">—</span></div>
+    <div class="stat">MSE: <span id="mse-val">—</span></div>
+    <button onclick="resetPts()">Clear</button>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('reg-canvas');
+const ctx = canvas.getContext('2d');
+let pts = [];
+let dpr = window.devicePixelRatio || 1;
+
+function resize() {
+  const w = canvas.parentElement.offsetWidth;
+  canvas.width = w * dpr;
+  canvas.height = 260 * dpr;
+  ctx.scale(dpr, dpr);
+  draw();
+}
+
+function isDark() {
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+function draw() {
+  const W = canvas.width / dpr;
+  const H = canvas.height / dpr;
+  ctx.clearRect(0, 0, W, H);
+
+  const dark = isDark();
+  const gridColor = dark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)';
+  const axisColor = dark ? 'rgba(255,255,255,0.15)' : 'rgba(0,0,0,0.15)';
+  const ptColor = '#1D9E75';
+  const lineColor = '#534AB7';
+  const residColor = dark ? 'rgba(186,117,23,0.5)' : 'rgba(186,117,23,0.4)';
+
+  for (let x = 0; x < W; x += 40) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H);
+    ctx.strokeStyle = gridColor; ctx.lineWidth = 0.5; ctx.stroke();
+  }
+  for (let y = 0; y < H; y += 40) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y);
+    ctx.strokeStyle = gridColor; ctx.lineWidth = 0.5; ctx.stroke();
+  }
+
+  if (pts.length >= 2) {
+    const n = pts.length;
+    const mx = pts.reduce((a,p)=>a+p.x,0)/n;
+    const my = pts.reduce((a,p)=>a+p.y,0)/n;
+    let num=0, den=0;
+    pts.forEach(p => { num += (p.x-mx)*(p.y-my); den += (p.x-mx)**2; });
+    const m = den ? num/den : 0;
+    const b = my - m*mx;
+
+    let mse = pts.reduce((a,p) => a + (p.y - (m*p.x+b))**2, 0) / n;
+
+    document.getElementById('m-val').textContent = m.toFixed(3);
+    document.getElementById('b-val').textContent = b.toFixed(1);
+    document.getElementById('mse-val').textContent = mse.toFixed(1);
+
+    pts.forEach(p => {
+      const yp = m*p.x+b;
+      ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(p.x, yp);
+      ctx.strokeStyle = residColor; ctx.lineWidth = 1;
+      ctx.setLineDash([3,3]); ctx.stroke(); ctx.setLineDash([]);
+    });
+
+    ctx.beginPath(); ctx.moveTo(0, m*0+b); ctx.lineTo(W, m*W+b);
+    ctx.strokeStyle = lineColor; ctx.lineWidth = 2.5; ctx.stroke();
+  }
+
+  pts.forEach(p => {
+    ctx.beginPath(); ctx.arc(p.x, p.y, 5, 0, Math.PI*2);
+    ctx.fillStyle = ptColor; ctx.fill();
+    ctx.strokeStyle = dark ? 'rgba(255,255,255,0.3)' : 'white';
+    ctx.lineWidth = 1.5; ctx.stroke();
+  });
+}
+
+canvas.addEventListener('click', e => {
+  const r = canvas.getBoundingClientRect();
+  pts.push({ x: e.clientX - r.left, y: e.clientY - r.top });
+  document.getElementById('n-pts').textContent = pts.length;
+  draw();
+});
+
+function resetPts() {
+  pts = [];
+  ['n-pts','m-val','b-val','mse-val'].forEach((id,i) => {
+    document.getElementById(id).textContent = i===0 ? '0' : '—';
+  });
+  draw();
+}
+
+window.addEventListener('resize', resize);
+resize();
+</script>
