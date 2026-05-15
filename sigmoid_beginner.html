@@ -1,0 +1,182 @@
+
+<h2 class="sr-only">Beginner-friendly sigmoid function explorer. Drag the slider to move input z and see how the sigmoid squishes it into a probability between 0 and 1.</h2>
+<style>
+  .sg2-wrap { padding:1rem 0; }
+  .sg2-intro { font-size:13px; color:var(--color-text-secondary); margin-bottom:16px; line-height:1.6; background:var(--color-background-secondary); border-radius:var(--border-radius-lg); padding:12px 16px; }
+  .sg2-intro b { color:var(--color-text-primary); font-weight:500; }
+  .sg2-slider-row { display:flex; align-items:center; gap:12px; margin-bottom:4px; flex-wrap:wrap; }
+  .sg2-slider-row label { font-size:13px; color:var(--color-text-secondary); white-space:nowrap; }
+  .sg2-slider-row input { flex:1; min-width:120px; }
+  .sg2-slider-row .zval { font-size:15px; font-weight:500; min-width:40px; color:var(--color-text-primary); font-family:var(--font-mono); }
+  .sg2-hint-row { display:flex; justify-content:space-between; font-size:11px; color:var(--color-text-secondary); margin-bottom:14px; padding:0 2px; }
+  #sg2-canvas { width:100%; height:240px; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); display:block; }
+  .sg2-output { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
+  .sg2-box { border-radius:var(--border-radius-lg); padding:14px 16px; border:0.5px solid var(--color-border-tertiary); }
+  .sg2-box-label { font-size:11px; color:var(--color-text-secondary); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.04em; }
+  .sg2-box-main { font-size:24px; font-weight:500; }
+  .sg2-box-sub { font-size:12px; color:var(--color-text-secondary); margin-top:4px; }
+  .sg2-formula { font-family:var(--font-mono); font-size:12px; color:var(--color-text-secondary); text-align:center; margin-top:10px; background:var(--color-background-secondary); padding:8px; border-radius:var(--border-radius-md); }
+</style>
+<div class="sg2-wrap">
+  <div class="sg2-intro">
+    The <b>sigmoid function</b> takes any number (called <b>z</b>) and squishes it into a value between <b>0 and 1</b>. That output is a <b>probability</b>. If it's above 0.5 → predict class 1. Below 0.5 → predict class 0.
+  </div>
+
+  <div class="sg2-slider-row">
+    <label>Input z =</label>
+    <input type="range" min="-6" max="6" step="0.1" value="0" id="sg2-slider">
+    <span class="zval" id="sg2-zval">0.0</span>
+  </div>
+  <div class="sg2-hint-row">
+    <span>← very negative (certain class 0)</span>
+    <span>z = 0 (50/50)</span>
+    <span>(certain class 1) very positive →</span>
+  </div>
+
+  <canvas id="sg2-canvas"></canvas>
+
+  <div class="sg2-output">
+    <div class="sg2-box" id="sg2-prob-box">
+      <div class="sg2-box-label">σ(z) — output probability</div>
+      <div class="sg2-box-main" id="sg2-prob">0.500</div>
+      <div class="sg2-box-sub" id="sg2-prob-explain">50% chance it's class 1</div>
+    </div>
+    <div class="sg2-box" id="sg2-pred-box">
+      <div class="sg2-box-label">Prediction (threshold = 0.5)</div>
+      <div class="sg2-box-main" id="sg2-pred">—</div>
+      <div class="sg2-box-sub" id="sg2-pred-explain">Move the slider to see a prediction</div>
+    </div>
+  </div>
+
+  <div class="sg2-formula" id="sg2-formula">σ(0.0) = 1 / (1 + e^0.0) = 0.500</div>
+</div>
+
+<script>
+const sg2c = document.getElementById('sg2-canvas');
+const sg2x = sg2c.getContext('2d');
+let s2dpr = window.devicePixelRatio || 1;
+
+function sig(z){ return 1/(1+Math.exp(-z)); }
+function isDark(){ return window.matchMedia('(prefers-color-scheme:dark)').matches; }
+
+function sg2resize(){
+  const W = sg2c.parentElement.offsetWidth;
+  sg2c.width = W*s2dpr; sg2c.height = 240*s2dpr;
+  sg2x.scale(s2dpr,s2dpr); sg2draw();
+}
+
+function sg2draw(){
+  const z = parseFloat(document.getElementById('sg2-slider').value);
+  const W = sg2c.width/s2dpr, H = sg2c.height/s2dpr;
+  sg2x.clearRect(0,0,W,H);
+  const dark = isDark();
+  const pad = {l:20, r:20, t:28, b:28};
+  const cW = W-pad.l-pad.r, cH = H-pad.t-pad.b;
+  const xMin=-6,xMax=6;
+
+  function tx(v){ return pad.l+(v-xMin)/(xMax-xMin)*cW; }
+  function ty(v){ return pad.t+(1-v)*cH; }
+
+  // zone backgrounds
+  sg2x.fillStyle = dark?'rgba(216,90,48,0.07)':'rgba(216,90,48,0.05)';
+  sg2x.fillRect(pad.l,pad.t,cW/2,cH);
+  sg2x.fillStyle = dark?'rgba(29,158,117,0.07)':'rgba(29,158,117,0.05)';
+  sg2x.fillRect(pad.l+cW/2,pad.t,cW/2,cH);
+
+  // zone labels
+  sg2x.font='bold 12px sans-serif'; sg2x.textAlign='center';
+  sg2x.fillStyle=dark?'rgba(216,90,48,0.5)':'rgba(216,90,48,0.4)';
+  sg2x.fillText('CLASS 0 ZONE',pad.l+cW*0.25,pad.t+20);
+  sg2x.fillStyle=dark?'rgba(29,158,117,0.5)':'rgba(29,158,117,0.4)';
+  sg2x.fillText('CLASS 1 ZONE',pad.l+cW*0.75,pad.t+20);
+
+  // threshold line at y=0.5
+  sg2x.beginPath(); sg2x.moveTo(pad.l,ty(0.5)); sg2x.lineTo(pad.l+cW,ty(0.5));
+  sg2x.strokeStyle=dark?'rgba(255,255,255,0.2)':'rgba(0,0,0,0.15)';
+  sg2x.lineWidth=1; sg2x.setLineDash([5,4]); sg2x.stroke(); sg2x.setLineDash([]);
+  sg2x.fillStyle=dark?'rgba(255,255,255,0.4)':'rgba(0,0,0,0.35)';
+  sg2x.font='11px sans-serif'; sg2x.textAlign='right';
+  sg2x.fillText('threshold 0.5',pad.l+cW-2,ty(0.5)-5);
+
+  // x axis labels
+  sg2x.fillStyle=dark?'rgba(255,255,255,0.3)':'rgba(0,0,0,0.3)';
+  sg2x.font='11px sans-serif'; sg2x.textAlign='center';
+  [-6,-4,-2,0,2,4,6].forEach(v=>{
+    sg2x.fillText(v,tx(v),pad.t+cH+14);
+  });
+
+  // curve
+  sg2x.beginPath();
+  for(let v=xMin;v<=xMax;v+=0.04){
+    const px=tx(v), py=ty(sig(v));
+    v===xMin?sg2x.moveTo(px,py):sg2x.lineTo(px,py);
+  }
+  sg2x.strokeStyle='#534AB7'; sg2x.lineWidth=3; sg2x.stroke();
+
+  // vertical guide from dot to x-axis
+  const px=tx(z), py=ty(sig(z));
+  sg2x.beginPath(); sg2x.moveTo(px,pad.t+cH); sg2x.lineTo(px,py);
+  sg2x.strokeStyle=dark?'rgba(255,255,255,0.15)':'rgba(0,0,0,0.1)';
+  sg2x.lineWidth=1; sg2x.setLineDash([3,3]); sg2x.stroke(); sg2x.setLineDash([]);
+
+  // horizontal guide from dot to y-axis
+  sg2x.beginPath(); sg2x.moveTo(pad.l,py); sg2x.lineTo(px,py);
+  sg2x.strokeStyle=dark?'rgba(255,255,255,0.15)':'rgba(0,0,0,0.1)';
+  sg2x.lineWidth=1; sg2x.setLineDash([3,3]); sg2x.stroke(); sg2x.setLineDash([]);
+
+  // dot
+  const p=sig(z);
+  sg2x.beginPath(); sg2x.arc(px,py,9,0,Math.PI*2);
+  sg2x.fillStyle=p>=0.5?'#1D9E75':'#D85A30'; sg2x.fill();
+  sg2x.strokeStyle='white'; sg2x.lineWidth=2.5; sg2x.stroke();
+
+  // annotation bubble
+  const label=p.toFixed(3);
+  const bw=52, bh=22;
+  const bx=Math.min(Math.max(px-bw/2,pad.l),pad.l+cW-bw);
+  const by=py-bh-10;
+  sg2x.fillStyle=p>=0.5?'#1D9E75':'#D85A30';
+  sg2x.beginPath();
+  sg2x.roundRect(bx,by,bw,bh,4);
+  sg2x.fill();
+  sg2x.fillStyle='white'; sg2x.font='bold 12px sans-serif'; sg2x.textAlign='center';
+  sg2x.fillText(label,bx+bw/2,by+bh-5);
+}
+
+function sg2update(){
+  const z=parseFloat(document.getElementById('sg2-slider').value);
+  const p=sig(z);
+  document.getElementById('sg2-zval').textContent=z.toFixed(1);
+  document.getElementById('sg2-prob').textContent=p.toFixed(3);
+  document.getElementById('sg2-prob-explain').textContent=Math.round(p*100)+'% chance it\'s class 1';
+
+  const pb=document.getElementById('sg2-prob-box');
+  const pred=p>=0.5?'Class 1':'Class 0';
+  const predEl=document.getElementById('sg2-pred');
+  const predEx=document.getElementById('sg2-pred-explain');
+  const pdb=document.getElementById('sg2-pred-box');
+
+  predEl.textContent=pred;
+  if(p>=0.5){
+    predEx.textContent='Probability ≥ 0.5 → predicted positive';
+    pdb.style.background='#E1F5EE'; pdb.style.borderColor='#5DCAA5';
+    predEl.style.color='#0F6E56';
+    pb.style.background='#E1F5EE'; pb.style.borderColor='#5DCAA5';
+  } else {
+    predEx.textContent='Probability < 0.5 → predicted negative';
+    pdb.style.background='#FAECE7'; pdb.style.borderColor='#F0997B';
+    predEl.style.color='#993C1D';
+    pb.style.background='#FAECE7'; pb.style.borderColor='#F0997B';
+  }
+
+  const ezStr=z>=0?'+'+(-z).toFixed(1):String((-z).toFixed(1));
+  document.getElementById('sg2-formula').textContent=
+    `σ(${z.toFixed(1)}) = 1 / (1 + e^${ezStr}) = ${p.toFixed(4)}`;
+
+  sg2draw();
+}
+
+document.getElementById('sg2-slider').addEventListener('input',sg2update);
+window.addEventListener('resize',sg2resize);
+sg2resize(); sg2update();
+</script>

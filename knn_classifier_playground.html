@@ -1,0 +1,214 @@
+
+<h2 class="sr-only">KNN classifier playground. Place fruit points on a chart, then click anywhere to predict what fruit a new point would be, showing its K nearest neighbors.</h2>
+<style>
+  .kp-wrap { padding:1rem 0; }
+  .kp-intro { font-size:13px; color:var(--color-text-secondary); background:var(--color-background-secondary); border-radius:var(--border-radius-lg); padding:12px 16px; margin-bottom:14px; line-height:1.6; }
+  .kp-intro b { color:var(--color-text-primary); font-weight:500; }
+  .kp-controls { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:10px; }
+  .kp-btn { font-size:13px; padding:7px 14px; border-radius:var(--border-radius-lg); border:2px solid transparent; cursor:pointer; font-weight:500; transition:all 0.15s; }
+  .kp-btn.inactive { opacity:0.35; }
+  .kp-btn-apple { background:#FAECE7; color:#993C1D; border-color:#F0997B; }
+  .kp-btn-grape { background:#EEEDFE; color:#3C3489; border-color:#AFA9EC; }
+  .kp-btn-predict { background:#E6F1FB; color:#0C447C; border-color:#85B7EB; }
+  .kp-k-row { display:flex; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap; }
+  .kp-k-row label { font-size:13px; color:var(--color-text-secondary); }
+  .kp-k-row input { width:120px; }
+  .kp-k-val { font-size:15px; font-weight:500; color:var(--color-text-primary); min-width:16px; }
+  #kp-canvas { width:100%; height:280px; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); display:block; }
+  .kp-result { margin-top:10px; font-size:13px; padding:10px 14px; border-radius:var(--border-radius-md); background:var(--color-background-secondary); color:var(--color-text-secondary); line-height:1.6; min-height:36px; }
+  .kp-result b { color:var(--color-text-primary); font-weight:500; }
+  .kp-legend { display:flex; gap:16px; margin-top:10px; flex-wrap:wrap; }
+  .kp-leg { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--color-text-secondary); }
+  .kp-leg-dot { width:12px; height:12px; border-radius:50%; }
+</style>
+<div class="kp-wrap">
+  <div class="kp-intro">
+    <b>Scenario: Fruit classifier.</b> Each fruit is described by two features — sweetness and crunchiness. Place training fruits, then switch to "Predict" mode and click to classify a new unknown fruit based on its K nearest neighbors.
+  </div>
+
+  <div class="kp-controls">
+    <button class="kp-btn kp-btn-apple" id="kp-b0" onclick="kpSetMode('apple')">Place Apple</button>
+    <button class="kp-btn kp-btn-grape inactive" id="kp-b1" onclick="kpSetMode('grape')">Place Grape</button>
+    <button class="kp-btn kp-btn-predict inactive" id="kp-b2" onclick="kpSetMode('predict')">Predict new fruit</button>
+    <button style="margin-left:auto;" onclick="kpClear()">Clear</button>
+  </div>
+
+  <div class="kp-k-row">
+    <label>K (neighbors to check) =</label>
+    <input type="range" min="1" max="9" step="2" value="3" id="kp-k-slider">
+    <span class="kp-k-val" id="kp-k-val">3</span>
+    <span style="font-size:12px;color:var(--color-text-secondary);">— odd numbers avoid ties</span>
+  </div>
+
+  <canvas id="kp-canvas"></canvas>
+
+  <div class="kp-result" id="kp-result">
+    Start by placing some <b>Apple</b> points, then some <b>Grape</b> points. Then switch to <b>Predict</b> mode and click to classify a new fruit.
+  </div>
+
+  <div class="kp-legend">
+    <div class="kp-leg"><div class="kp-leg-dot" style="background:#D85A30;"></div> Apple (training)</div>
+    <div class="kp-leg"><div class="kp-leg-dot" style="background:#534AB7;"></div> Grape (training)</div>
+    <div class="kp-leg"><div class="kp-leg-dot" style="background:#1D9E75;border:2px dashed #085041;"></div> New fruit (query point)</div>
+    <div class="kp-leg"><div style="width:22px;height:2px;background:#BA7517;border-radius:1px;"></div> Distance lines to neighbors</div>
+  </div>
+</div>
+
+<script>
+const kpc = document.getElementById('kp-canvas');
+const kpx = kpc.getContext('2d');
+let kpdpr = window.devicePixelRatio || 1;
+let kpPts = [], kpMode = 'apple', kpQuery = null;
+
+const COLORS = { apple:'#D85A30', grape:'#534AB7' };
+const PAD = { l:44, r:16, t:20, b:38 };
+
+function isDark(){ return window.matchMedia('(prefers-color-scheme:dark)').matches; }
+
+function kpSetMode(m){
+  kpMode = m;
+  ['apple','grape','predict'].forEach(id => {
+    document.getElementById('kp-b'+{apple:0,grape:1,predict:2}[id]).className =
+      'kp-btn kp-btn-'+id+(m===id?'':' inactive');
+  });
+  kpc.style.cursor = m==='predict'?'crosshair':'copy';
+  if(m!=='predict') kpQuery=null;
+  kpDraw();
+}
+
+function kpResize(){
+  const W = kpc.parentElement.offsetWidth;
+  kpc.width = W*kpdpr; kpc.height = 280*kpdpr;
+  kpx.scale(kpdpr,kpdpr); kpDraw();
+}
+
+function euclidean(a,b){ return Math.sqrt((a.x-b.x)**2+(a.y-b.y)**2); }
+
+function kpPredict(query, k){
+  if(kpPts.length < k) return null;
+  const dists = kpPts.map(p => ({...p, d: euclidean(p, query)}));
+  dists.sort((a,b)=>a.d-b.d);
+  const neighbors = dists.slice(0,k);
+  const votes = {};
+  neighbors.forEach(n => { votes[n.c] = (votes[n.c]||0)+1; });
+  const winner = Object.entries(votes).sort((a,b)=>b[1]-a[1])[0];
+  return { label: winner[0], votes, neighbors };
+}
+
+function kpDraw(){
+  const W = kpc.width/kpdpr, H = kpc.height/kpdpr;
+  kpx.clearRect(0,0,W,H);
+  const dark = isDark();
+  const cW = W-PAD.l-PAD.r, cH = H-PAD.t-PAD.b;
+  const gridC = dark?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.05)';
+  const axC = dark?'rgba(255,255,255,0.2)':'rgba(0,0,0,0.2)';
+  const tC = dark?'rgba(255,255,255,0.4)':'rgba(0,0,0,0.38)';
+
+  for(let i=0;i<=5;i++){
+    const x=PAD.l+i*cW/5;
+    kpx.beginPath(); kpx.moveTo(x,PAD.t); kpx.lineTo(x,PAD.t+cH);
+    kpx.strokeStyle=gridC; kpx.lineWidth=0.5; kpx.stroke();
+    kpx.fillStyle=tC; kpx.font='11px sans-serif'; kpx.textAlign='center';
+    kpx.fillText((i*2).toString(), x, PAD.t+cH+14);
+  }
+  for(let i=0;i<=4;i++){
+    const y=PAD.t+i*cH/4;
+    kpx.beginPath(); kpx.moveTo(PAD.l,y); kpx.lineTo(PAD.l+cW,y);
+    kpx.strokeStyle=gridC; kpx.lineWidth=0.5; kpx.stroke();
+    kpx.fillStyle=tC; kpx.font='11px sans-serif'; kpx.textAlign='right';
+    kpx.fillText((10-i*2.5).toFixed(0), PAD.l-6, y+4);
+  }
+  kpx.strokeStyle=axC; kpx.lineWidth=1;
+  kpx.beginPath(); kpx.moveTo(PAD.l,PAD.t); kpx.lineTo(PAD.l,PAD.t+cH); kpx.stroke();
+  kpx.beginPath(); kpx.moveTo(PAD.l,PAD.t+cH); kpx.lineTo(PAD.l+cW,PAD.t+cH); kpx.stroke();
+  kpx.fillStyle=tC; kpx.font='12px sans-serif'; kpx.textAlign='center';
+  kpx.fillText('Sweetness →', PAD.l+cW/2, H-2);
+  kpx.save(); kpx.translate(13,PAD.t+cH/2); kpx.rotate(-Math.PI/2);
+  kpx.fillText('Crunchiness →', 0, 0); kpx.restore();
+
+  const k = parseInt(document.getElementById('kp-k-slider').value);
+
+  // draw neighbor lines + circle if query exists
+  if(kpQuery && kpPts.length >= k){
+    const res = kpPredict(kpQuery, k);
+    if(res){
+      // radius circle
+      const maxDist = Math.max(...res.neighbors.map(n=>n.d));
+      kpx.beginPath(); kpx.arc(kpQuery.x, kpQuery.y, maxDist, 0, Math.PI*2);
+      kpx.strokeStyle='#BA7517'; kpx.lineWidth=1.5;
+      kpx.setLineDash([5,4]); kpx.stroke(); kpx.setLineDash([]);
+
+      // lines to neighbors
+      res.neighbors.forEach(n => {
+        kpx.beginPath(); kpx.moveTo(kpQuery.x,kpQuery.y); kpx.lineTo(n.x,n.y);
+        kpx.strokeStyle='#BA7517'; kpx.lineWidth=1.5; kpx.stroke();
+        // distance label
+        const mx=(kpQuery.x+n.x)/2, my=(kpQuery.y+n.y)/2;
+        kpx.fillStyle='#854F0B'; kpx.font='10px sans-serif'; kpx.textAlign='center';
+        kpx.fillText(n.d.toFixed(1),mx,my-3);
+      });
+    }
+  }
+
+  // training points
+  kpPts.forEach(p => {
+    kpx.beginPath(); kpx.arc(p.x,p.y,7,0,Math.PI*2);
+    kpx.fillStyle=COLORS[p.c]; kpx.fill();
+    kpx.strokeStyle=dark?'rgba(255,255,255,0.4)':'white';
+    kpx.lineWidth=2; kpx.stroke();
+  });
+
+  // query point
+  if(kpQuery){
+    const res = kpPts.length>=k ? kpPredict(kpQuery,k) : null;
+    const col = res ? COLORS[res.label] : '#1D9E75';
+    kpx.beginPath(); kpx.arc(kpQuery.x,kpQuery.y,9,0,Math.PI*2);
+    kpx.fillStyle=col; kpx.fill();
+    kpx.strokeStyle='white'; kpx.lineWidth=2.5;
+    kpx.setLineDash([4,3]); kpx.stroke(); kpx.setLineDash([]);
+    kpx.fillStyle='white'; kpx.font='bold 11px sans-serif'; kpx.textAlign='center';
+    kpx.fillText('?',kpQuery.x,kpQuery.y+4);
+  }
+}
+
+kpc.addEventListener('click', e => {
+  const r = kpc.getBoundingClientRect();
+  const x=e.clientX-r.left, y=e.clientY-r.top;
+  const k = parseInt(document.getElementById('kp-k-slider').value);
+
+  if(kpMode==='predict'){
+    kpQuery={x,y};
+    const res = kpPts.length>=k ? kpPredict(kpQuery,k) : null;
+    const el = document.getElementById('kp-result');
+    if(!res){
+      el.innerHTML=`Need at least <b>${k} training points</b> to make a prediction with K=${k}. Add more fruits first.`;
+    } else {
+      const appleV = res.votes['apple']||0, grapeV = res.votes['grape']||0;
+      const label = res.label;
+      const lc = label==='apple'?'#993C1D':'#3C3489';
+      el.innerHTML=`The new fruit (dashed circle) has <b>${k} nearest neighbors</b>: <b style="color:#993C1D">${appleV} apple${appleV!==1?'s':''}</b> and <b style="color:#3C3489">${grapeV} grape${grapeV!==1?'s':''}</b>. Majority vote → predicted as <b style="color:${lc}">${label.toUpperCase()}</b>. The amber dashed circle shows the search radius.`;
+    }
+  } else {
+    kpPts.push({x,y,c:kpMode});
+    const apples=kpPts.filter(p=>p.c==='apple').length;
+    const grapes=kpPts.filter(p=>p.c==='grape').length;
+    document.getElementById('kp-result').innerHTML=`Training data: <b>${apples} apple${apples!==1?'s':''}</b> and <b>${grapes} grape${grapes!==1?'s':''}</b> placed. Switch to <b>Predict new fruit</b> when ready.`;
+  }
+  kpDraw();
+});
+
+document.getElementById('kp-k-slider').addEventListener('input', function(){
+  document.getElementById('kp-k-val').textContent = this.value;
+  if(kpQuery) kpc.dispatchEvent(new MouseEvent('click',{clientX:0,clientY:0}));
+  kpDraw();
+});
+
+function kpClear(){
+  kpPts=[]; kpQuery=null;
+  document.getElementById('kp-result').innerHTML='Start by placing some <b>Apple</b> points, then some <b>Grape</b> points. Then switch to <b>Predict</b> mode and click to classify a new fruit.';
+  kpDraw();
+}
+
+window.addEventListener('resize',kpResize);
+kpResize();
+</script>

@@ -1,0 +1,171 @@
+
+<h2 class="sr-only">Effect of K value on KNN predictions. A fixed set of training points is shown. Adjust K to see how the number of neighbors considered changes the prediction and vote count for a fixed query point.</h2>
+<style>
+  .kv-wrap { padding:1rem 0; }
+  .kv-intro { font-size:13px; color:var(--color-text-secondary); background:var(--color-background-secondary); border-radius:var(--border-radius-lg); padding:12px 16px; margin-bottom:14px; line-height:1.6; }
+  .kv-intro b { color:var(--color-text-primary); font-weight:500; }
+  .kv-k-row { display:flex; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
+  .kv-k-row label { font-size:13px; color:var(--color-text-secondary); white-space:nowrap; }
+  .kv-k-row input { flex:1; min-width:140px; }
+  .kv-kval { font-size:18px; font-weight:500; color:var(--color-text-primary); min-width:20px; }
+  #kv-canvas { width:100%; height:300px; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); display:block; }
+  .kv-outcome { display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-top:12px; }
+  .kv-card { border-radius:var(--border-radius-lg); padding:12px 14px; border:0.5px solid var(--color-border-tertiary); }
+  .kv-card .kv-lbl { font-size:11px; color:var(--color-text-secondary); margin-bottom:4px; }
+  .kv-card .kv-val { font-size:20px; font-weight:500; }
+  .kv-card .kv-sub { font-size:12px; margin-top:3px; }
+  .vote-bar { height:10px; border-radius:6px; margin-top:6px; transition:width 0.3s; }
+</style>
+<div class="kv-wrap">
+  <div class="kv-intro">
+    The <b>star (★)</b> is a new unknown point. The training dots around it are pre-placed. Adjust K to include more or fewer neighbors — watch how the <b>majority vote</b> changes and sometimes flips the prediction.
+  </div>
+
+  <div class="kv-k-row">
+    <label>K =</label>
+    <input type="range" min="1" max="11" step="2" value="3" id="kv-k">
+    <span class="kv-kval" id="kv-kval">3</span>
+    <span style="font-size:12px;color:var(--color-text-secondary);">neighbors considered</span>
+  </div>
+
+  <canvas id="kv-canvas"></canvas>
+
+  <div class="kv-outcome" id="kv-outcome"></div>
+</div>
+
+<script>
+const kvc = document.getElementById('kv-canvas');
+const kvx = kvc.getContext('2d');
+let kvdpr = window.devicePixelRatio||1;
+
+function isDark(){ return window.matchMedia('(prefers-color-scheme:dark)').matches; }
+
+let QUERY, TRAIN;
+
+function initPts(){
+  const W=kvc.width/kvdpr, H=kvc.height/kvdpr;
+  const cx=W/2, cy=H/2;
+  QUERY={x:cx,y:cy};
+  TRAIN=[
+    {x:cx-60,y:cy-50,c:'orange'},{x:cx-80,y:cy+20,c:'orange'},
+    {x:cx-40,y:cy+60,c:'orange'},{x:cx+30,y:cy-70,c:'orange'},
+    {x:cx+90,y:cy-30,c:'blue'},{x:cx+70,y:cy+50,c:'blue'},
+    {x:cx-20,y:cy-90,c:'blue'},{x:cx+110,y:cy+10,c:'blue'},
+    {x:cx-110,y:cy-20,c:'orange'},{x:cx+50,y:cy+80,c:'blue'},
+    {x:cx-30,y:cy+110,c:'blue'},
+  ];
+  TRAIN.forEach(p=>{ p.d=Math.hypot(p.x-QUERY.x,p.y-QUERY.y); });
+  TRAIN.sort((a,b)=>a.d-b.d);
+}
+
+const CCOLS={ orange:{fill:'#D85A30',tc:'#712B13',bg:'#FAECE7'}, blue:{fill:'#534AB7',tc:'#26215C',bg:'#EEEDFE'} };
+
+function kvDraw(k){
+  const W=kvc.width/kvdpr, H=kvc.height/kvdpr;
+  kvx.clearRect(0,0,W,H);
+  const dark=isDark();
+  const gridC=dark?'rgba(255,255,255,0.04)':'rgba(0,0,0,0.04)';
+
+  for(let x=0;x<W;x+=40){ kvx.beginPath(); kvx.moveTo(x,0); kvx.lineTo(x,H); kvx.strokeStyle=gridC; kvx.lineWidth=0.5; kvx.stroke(); }
+  for(let y=0;y<H;y+=40){ kvx.beginPath(); kvx.moveTo(0,y); kvx.lineTo(W,y); kvx.strokeStyle=gridC; kvx.lineWidth=0.5; kvx.stroke(); }
+
+  const neighbors=TRAIN.slice(0,k);
+  const maxD=neighbors[neighbors.length-1].d;
+
+  // search radius
+  kvx.beginPath(); kvx.arc(QUERY.x,QUERY.y,maxD+4,0,Math.PI*2);
+  kvx.strokeStyle='#BA7517'; kvx.lineWidth=1.5; kvx.setLineDash([5,4]); kvx.stroke(); kvx.setLineDash([]);
+  kvx.fillStyle=dark?'rgba(186,117,23,0.06)':'rgba(186,117,23,0.05)';
+  kvx.beginPath(); kvx.arc(QUERY.x,QUERY.y,maxD+4,0,Math.PI*2); kvx.fill();
+
+  // lines to neighbors
+  neighbors.forEach((p,i)=>{
+    kvx.beginPath(); kvx.moveTo(QUERY.x,QUERY.y); kvx.lineTo(p.x,p.y);
+    kvx.strokeStyle='#BA7517'; kvx.lineWidth=1.5; kvx.stroke();
+    // rank label
+    const mx=(QUERY.x+p.x)/2, my=(QUERY.y+p.y)/2;
+    kvx.beginPath(); kvx.arc(mx,my,9,0,Math.PI*2);
+    kvx.fillStyle='#FAEEDA'; kvx.fill();
+    kvx.strokeStyle='#EF9F27'; kvx.lineWidth=1; kvx.stroke();
+    kvx.fillStyle='#633806'; kvx.font='bold 10px sans-serif'; kvx.textAlign='center';
+    kvx.fillText('#'+(i+1),mx,my+4);
+  });
+
+  // all training dots
+  TRAIN.forEach((p,i)=>{
+    const isNeighbor=i<k;
+    const col=CCOLS[p.c];
+    kvx.beginPath(); kvx.arc(p.x,p.y,isNeighbor?9:7,0,Math.PI*2);
+    kvx.fillStyle=isNeighbor?col.fill:dark?'rgba(120,120,120,0.3)':'rgba(180,180,180,0.4)';
+    kvx.fill();
+    kvx.strokeStyle=isNeighbor?(dark?'rgba(255,255,255,0.4)':'white'):(dark?'rgba(255,255,255,0.15)':'rgba(0,0,0,0.15)');
+    kvx.lineWidth=2; kvx.stroke();
+    if(isNeighbor){
+      kvx.fillStyle='white'; kvx.font='bold 10px sans-serif'; kvx.textAlign='center';
+      const lbl=p.c==='orange'?'O':'B';
+      kvx.fillText(lbl,p.x,p.y+4);
+    }
+  });
+
+  // query star
+  drawStar(kvx,QUERY.x,QUERY.y,12,6);
+
+  // vote count & outcome
+  const orangeV=neighbors.filter(p=>p.c==='orange').length;
+  const blueV=neighbors.filter(p=>p.c==='blue').length;
+  const winner=orangeV>blueV?'orange':'blue';
+  const wc=CCOLS[winner];
+
+  document.getElementById('kv-outcome').innerHTML=`
+    <div class="kv-card" style="background:${CCOLS.orange.bg};">
+      <div class="kv-lbl">Orange votes</div>
+      <div class="kv-val" style="color:${CCOLS.orange.tc}">${orangeV} / ${k}</div>
+      <div style="background:#F0997B;border-radius:6px;height:10px;margin-top:6px;width:${Math.round(orangeV/k*100)}%;transition:width 0.3s;"></div>
+    </div>
+    <div class="kv-card" style="background:${CCOLS.blue.bg};">
+      <div class="kv-lbl">Blue votes</div>
+      <div class="kv-val" style="color:${CCOLS.blue.tc}">${blueV} / ${k}</div>
+      <div style="background:#AFA9EC;border-radius:6px;height:10px;margin-top:6px;width:${Math.round(blueV/k*100)}%;transition:width 0.3s;"></div>
+    </div>
+    <div class="kv-card" style="background:${wc.bg};">
+      <div class="kv-lbl">Prediction (majority vote)</div>
+      <div class="kv-val" style="color:${wc.tc}">${winner.toUpperCase()}</div>
+      <div class="kv-sub" style="color:${wc.tc}">${orangeV} vs ${blueV} — ${winner} wins</div>
+    </div>
+    <div class="kv-card" style="background:var(--color-background-secondary);">
+      <div class="kv-lbl">Search radius</div>
+      <div class="kv-val" style="color:var(--color-text-primary)">${maxD.toFixed(0)}px</div>
+      <div class="kv-sub" style="color:var(--color-text-secondary)">Expands as K grows</div>
+    </div>
+  `;
+}
+
+function drawStar(ctx,cx,cy,outerR,innerR){
+  ctx.beginPath();
+  for(let i=0;i<10;i++){
+    const r=i%2===0?outerR:innerR;
+    const a=Math.PI/5*i-Math.PI/2;
+    i===0?ctx.moveTo(cx+r*Math.cos(a),cy+r*Math.sin(a)):ctx.lineTo(cx+r*Math.cos(a),cy+r*Math.sin(a));
+  }
+  ctx.closePath();
+  ctx.fillStyle='#BA7517'; ctx.fill();
+  ctx.strokeStyle='white'; ctx.lineWidth=2; ctx.stroke();
+}
+
+function kvResize(){
+  const W=kvc.parentElement.offsetWidth;
+  kvc.width=W*kvdpr; kvc.height=300*kvdpr;
+  kvx.scale(kvdpr,kvdpr);
+  initPts(); kvUpdate();
+}
+
+function kvUpdate(){
+  const k=parseInt(document.getElementById('kv-k').value);
+  document.getElementById('kv-kval').textContent=k;
+  kvDraw(k);
+}
+
+document.getElementById('kv-k').addEventListener('input',kvUpdate);
+window.addEventListener('resize',kvResize);
+kvResize();
+</script>

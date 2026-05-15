@@ -1,0 +1,165 @@
+
+<h2 class="sr-only">Distance metrics explainer. Drag two points on a grid and compare Euclidean straight-line distance versus Manhattan city-block distance in real time.</h2>
+<style>
+  .dm-wrap { padding:1rem 0; }
+  .dm-intro { font-size:13px; color:var(--color-text-secondary); background:var(--color-background-secondary); border-radius:var(--border-radius-lg); padding:12px 16px; margin-bottom:14px; line-height:1.6; }
+  .dm-intro b { color:var(--color-text-primary); font-weight:500; }
+  #dm-canvas { width:100%; height:280px; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); display:block; cursor:grab; }
+  .dm-cards { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-top:12px; }
+  .dm-card { border-radius:var(--border-radius-lg); padding:14px 16px; border:0.5px solid var(--color-border-tertiary); }
+  .dm-card-label { font-size:11px; color:var(--color-text-secondary); margin-bottom:4px; text-transform:uppercase; letter-spacing:0.04em; }
+  .dm-card-val { font-size:26px; font-weight:500; }
+  .dm-card-explain { font-size:12px; color:var(--color-text-secondary); margin-top:5px; line-height:1.5; }
+  .dm-tip { font-size:13px; padding:10px 14px; border-radius:var(--border-radius-md); margin-top:10px; color:var(--color-text-secondary); background:var(--color-background-secondary); }
+</style>
+<div class="dm-wrap">
+  <div class="dm-intro">
+    Drag either point (A or B) around the grid. See the two most common distance formulas measured live — <b>Euclidean</b> (straight ruler) and <b>Manhattan</b> (city blocks). KNN uses these to find "nearest" neighbors.
+  </div>
+  <canvas id="dm-canvas"></canvas>
+  <div class="dm-cards">
+    <div class="dm-card" style="background:#E1F5EE;">
+      <div class="dm-card-label">Euclidean distance</div>
+      <div class="dm-card-val" style="color:#085041;" id="dm-euc">—</div>
+      <div class="dm-card-explain">Straight-line distance (like a ruler). Formula: <span style="font-family:var(--font-mono);font-size:11px;">√((x₂-x₁)² + (y₂-y₁)²)</span></div>
+    </div>
+    <div class="dm-card" style="background:#EEEDFE;">
+      <div class="dm-card-label">Manhattan distance</div>
+      <div class="dm-card-val" style="color:#26215C;" id="dm-man">—</div>
+      <div class="dm-card-explain">City-block distance (like walking streets). Formula: <span style="font-family:var(--font-mono);font-size:11px;">|x₂-x₁| + |y₂-y₁|</span></div>
+    </div>
+  </div>
+  <div class="dm-tip" id="dm-tip">Drag either dot to move it. Watch both distances update.</div>
+</div>
+
+<script>
+const dmc = document.getElementById('dm-canvas');
+const dmx = dmc.getContext('2d');
+let dmdpr = window.devicePixelRatio||1;
+let ptA={x:0,y:0}, ptB={x:0,y:0}, dragging=null;
+const CELL=40;
+
+function isDark(){ return window.matchMedia('(prefers-color-scheme:dark)').matches; }
+
+function dmResize(){
+  const W=dmc.parentElement.offsetWidth;
+  dmc.width=W*dmdpr; dmc.height=280*dmdpr;
+  dmx.scale(dmdpr,dmdpr);
+  const cW=W, cH=280;
+  ptA={x:Math.round(cW*0.3/CELL)*CELL, y:Math.round(cH*0.35/CELL)*CELL};
+  ptB={x:Math.round(cW*0.7/CELL)*CELL, y:Math.round(cH*0.65/CELL)*CELL};
+  dmDraw();
+}
+
+function dmDraw(){
+  const W=dmc.width/dmdpr, H=dmc.height/dmdpr;
+  dmx.clearRect(0,0,W,H);
+  const dark=isDark();
+  const gridC=dark?'rgba(255,255,255,0.07)':'rgba(0,0,0,0.06)';
+  const tC=dark?'rgba(255,255,255,0.3)':'rgba(0,0,0,0.3)';
+
+  // grid
+  for(let x=0;x<W;x+=CELL){
+    dmx.beginPath(); dmx.moveTo(x,0); dmx.lineTo(x,H);
+    dmx.strokeStyle=gridC; dmx.lineWidth=0.5; dmx.stroke();
+  }
+  for(let y=0;y<H;y+=CELL){
+    dmx.beginPath(); dmx.moveTo(0,y); dmx.lineTo(W,y);
+    dmx.strokeStyle=gridC; dmx.lineWidth=0.5; dmx.stroke();
+  }
+
+  const dx=ptB.x-ptA.x, dy=ptB.y-ptA.y;
+  const euc=Math.sqrt(dx*dx+dy*dy);
+  const man=Math.abs(dx)+Math.abs(dy);
+
+  // Manhattan path
+  dmx.beginPath(); dmx.moveTo(ptA.x,ptA.y); dmx.lineTo(ptB.x,ptA.y); dmx.lineTo(ptB.x,ptB.y);
+  dmx.strokeStyle='#7F77DD'; dmx.lineWidth=2.5; dmx.setLineDash([6,4]); dmx.stroke(); dmx.setLineDash([]);
+
+  // Manhattan labels
+  const mxMid=(ptA.x+ptB.x)/2, myMid=ptA.y;
+  const mxOff=ptB.x, myOff=(ptA.y+ptB.y)/2;
+  dmx.fillStyle='#3C3489'; dmx.font='bold 12px sans-serif'; dmx.textAlign='center';
+  if(Math.abs(dx)>30) dmx.fillText('|Δx|='+Math.abs(dx/CELL).toFixed(1),mxMid,myMid-6);
+  if(Math.abs(dy)>30){
+    dmx.save(); dmx.translate(mxOff+12,myOff); dmx.rotate(Math.PI/2);
+    dmx.fillText('|Δy|='+Math.abs(dy/CELL).toFixed(1),0,0); dmx.restore();
+  }
+
+  // Euclidean line
+  dmx.beginPath(); dmx.moveTo(ptA.x,ptA.y); dmx.lineTo(ptB.x,ptB.y);
+  dmx.strokeStyle='#1D9E75'; dmx.lineWidth=3; dmx.stroke();
+
+  // Euclidean label on line
+  const ex=(ptA.x+ptB.x)/2, ey=(ptA.y+ptB.y)/2;
+  const angle=Math.atan2(dy,dx);
+  dmx.save(); dmx.translate(ex,ey); dmx.rotate(angle);
+  dmx.fillStyle='#085041'; dmx.font='bold 12px sans-serif'; dmx.textAlign='center';
+  dmx.fillText((euc/CELL).toFixed(2),0,-7); dmx.restore();
+
+  // dots
+  [['A',ptA,'#1D9E75','#085041'],['B',ptB,'#D85A30','#712B13']].forEach(([lbl,pt,fill,tc])=>{
+    dmx.beginPath(); dmx.arc(pt.x,pt.y,11,0,Math.PI*2);
+    dmx.fillStyle=fill; dmx.fill();
+    dmx.strokeStyle=dark?'rgba(255,255,255,0.4)':'white';
+    dmx.lineWidth=2.5; dmx.stroke();
+    dmx.fillStyle='white'; dmx.font='bold 13px sans-serif'; dmx.textAlign='center';
+    dmx.fillText(lbl,pt.x,pt.y+5);
+  });
+
+  // update cards
+  document.getElementById('dm-euc').textContent=(euc/CELL).toFixed(2)+' units';
+  document.getElementById('dm-man').textContent=(man/CELL).toFixed(2)+' units';
+
+  const ratio=(man/euc).toFixed(2);
+  const tip=document.getElementById('dm-tip');
+  if(Math.abs(dx)<2||Math.abs(dy)<2){
+    tip.textContent='When points are on the same row or column, Euclidean and Manhattan distances are equal!';
+    tip.style.background='#E1F5EE'; tip.style.color='#085041';
+  } else {
+    tip.innerHTML=`Manhattan (${(man/CELL).toFixed(2)}) is always ≥ Euclidean (${(euc/CELL).toFixed(2)}). Here Manhattan is <b>${ratio}×</b> the Euclidean distance — because the straight line is always the shortest path.`;
+    tip.style.background='var(--color-background-secondary)'; tip.style.color='var(--color-text-secondary)';
+  }
+}
+
+function getNearest(mx,my){
+  const dA=Math.hypot(mx-ptA.x,my-ptA.y);
+  const dB=Math.hypot(mx-ptB.x,my-ptB.y);
+  if(dA<20) return 'A';
+  if(dB<20) return 'B';
+  return null;
+}
+
+dmc.addEventListener('mousedown',e=>{
+  const r=dmc.getBoundingClientRect();
+  dragging=getNearest(e.clientX-r.left,e.clientY-r.top);
+  if(dragging) dmc.style.cursor='grabbing';
+});
+dmc.addEventListener('mousemove',e=>{
+  const r=dmc.getBoundingClientRect();
+  const x=e.clientX-r.left, y=e.clientY-r.top;
+  if(!dragging){ dmc.style.cursor=getNearest(x,y)?'grab':'default'; return; }
+  const snx=Math.round(x/CELL)*CELL, sny=Math.round(y/CELL)*CELL;
+  if(dragging==='A') ptA={x:snx,y:sny};
+  else ptB={x:snx,y:sny};
+  dmDraw();
+});
+dmc.addEventListener('mouseup',()=>{ dragging=null; dmc.style.cursor='grab'; });
+dmc.addEventListener('touchstart',e=>{
+  const r=dmc.getBoundingClientRect(), t=e.touches[0];
+  dragging=getNearest(t.clientX-r.left,t.clientY-r.top);
+  e.preventDefault();
+},{passive:false});
+dmc.addEventListener('touchmove',e=>{
+  if(!dragging) return;
+  const r=dmc.getBoundingClientRect(), t=e.touches[0];
+  const x=t.clientX-r.left, y=t.clientY-r.top;
+  const snx=Math.round(x/CELL)*CELL, sny=Math.round(y/CELL)*CELL;
+  if(dragging==='A') ptA={x:snx,y:sny}; else ptB={x:snx,y:sny};
+  dmDraw(); e.preventDefault();
+},{passive:false});
+dmc.addEventListener('touchend',()=>{ dragging=null; });
+
+window.addEventListener('resize',dmResize);
+dmResize();
+</script>

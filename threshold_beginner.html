@@ -1,0 +1,130 @@
+
+<h2 class="sr-only">Beginner-friendly threshold explorer using a hospital disease detection scenario. Adjust the threshold slider to see how the model's predictions change and what the tradeoffs are.</h2>
+<style>
+  .th2-wrap { padding:1rem 0; }
+  .th2-intro { font-size:13px; color:var(--color-text-secondary); background:var(--color-background-secondary); border-radius:var(--border-radius-lg); padding:12px 16px; margin-bottom:16px; line-height:1.6; }
+  .th2-intro b { color:var(--color-text-primary); font-weight:500; }
+  .th2-slider-row { display:flex; align-items:center; gap:12px; margin-bottom:6px; flex-wrap:wrap; }
+  .th2-slider-row label { font-size:13px; color:var(--color-text-secondary); white-space:nowrap; }
+  .th2-slider-row input { flex:1; min-width:140px; }
+  .th2-tval { font-size:18px; font-weight:500; color:var(--color-text-primary); min-width:40px; font-family:var(--font-mono); }
+  .th2-hint { font-size:11px; color:var(--color-text-secondary); margin-bottom:16px; display:flex; justify-content:space-between; padding:0 2px; }
+  .patients-grid { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:16px; }
+  .patient { width:56px; border-radius:var(--border-radius-md); padding:6px 4px; text-align:center; border:2px solid transparent; transition:all 0.25s; }
+  .patient .p-prob { font-size:13px; font-weight:500; }
+  .patient .p-truth { font-size:10px; margin-top:2px; }
+  .patient .p-verdict { font-size:10px; margin-top:3px; font-weight:500; padding:2px 4px; border-radius:3px; }
+  .metrics-row { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin-bottom:16px; }
+  .m2-card { border-radius:var(--border-radius-lg); padding:12px 14px; border:0.5px solid var(--color-border-tertiary); }
+  .m2-card .m2-lbl { font-size:11px; color:var(--color-text-secondary); margin-bottom:4px; }
+  .m2-card .m2-val { font-size:22px; font-weight:500; }
+  .m2-card .m2-explain { font-size:11px; color:var(--color-text-secondary); margin-top:4px; line-height:1.4; }
+  .th2-tip { font-size:13px; padding:10px 14px; border-radius:var(--border-radius-md); margin-top:4px; line-height:1.5; }
+</style>
+<div class="th2-wrap">
+  <div class="th2-intro">
+    <b>Scenario: Disease test.</b> A model gives each patient a probability of having a disease (0 = healthy, 1 = sick). You choose the <b>threshold</b> — above it, the model says "positive". Below it, "negative". See how changing the threshold creates different tradeoffs.
+  </div>
+
+  <div class="th2-slider-row">
+    <label>Threshold =</label>
+    <input type="range" min="5" max="95" step="5" value="50" id="th2-slider">
+    <span class="th2-tval" id="th2-tval">0.50</span>
+  </div>
+  <div class="th2-hint">
+    <span>← 0.05 (flag everyone)</span>
+    <span>0.50 (default)</span>
+    <span>(flag almost nobody) 0.95 →</span>
+  </div>
+
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:8px;">8 patients — hover over each to see their details:</p>
+  <div class="patients-grid" id="th2-patients"></div>
+
+  <div class="metrics-row" id="th2-metrics"></div>
+
+  <div class="th2-tip" id="th2-tip"></div>
+</div>
+
+<script>
+const PATS = [
+  {name:'Ana',   prob:0.91, actual:1},
+  {name:'Ben',   prob:0.78, actual:1},
+  {name:'Cara',  prob:0.65, actual:1},
+  {name:'Dan',   prob:0.55, actual:0},
+  {name:'Eva',   prob:0.45, actual:1},
+  {name:'Finn',  prob:0.32, actual:0},
+  {name:'Gina',  prob:0.18, actual:0},
+  {name:'Hank',  prob:0.08, actual:0},
+];
+
+function th2render(){
+  const t=parseInt(document.getElementById('th2-slider').value)/100;
+  document.getElementById('th2-tval').textContent=t.toFixed(2);
+
+  let TP=0,TN=0,FP=0,FN=0;
+  const results=PATS.map(p=>{
+    const pred=p.prob>=t?1:0;
+    let type;
+    if(pred===1&&p.actual===1){type='TP';TP++;}
+    else if(pred===0&&p.actual===0){type='TN';TN++;}
+    else if(pred===1&&p.actual===0){type='FP';FP++;}
+    else{type='FN';FN++;}
+    return {...p,pred,type};
+  });
+
+  const typeStyles={
+    TP:{bg:'#E1F5EE',bc:'#5DCAA5',lc:'#0F6E56',vbg:'#5DCAA5',vc:'white',label:'✓ Correct'},
+    TN:{bg:'#E6F1FB',bc:'#85B7EB',lc:'#185FA5',vbg:'#85B7EB',vc:'white',label:'✓ Correct'},
+    FP:{bg:'#FAEEDA',bc:'#EF9F27',lc:'#854F0B',vbg:'#EF9F27',vc:'white',label:'⚠ False alarm'},
+    FN:{bg:'#FAECE7',bc:'#F0997B',lc:'#993C1D',vbg:'#F0997B',vc:'white',label:'✗ Missed!'},
+  };
+
+  document.getElementById('th2-patients').innerHTML=results.map(p=>{
+    const s=typeStyles[p.type];
+    const predLabel=p.pred===1?'Test +':'Test −';
+    const trueLabel=p.actual===1?'Actually sick':'Actually healthy';
+    return `<div class="patient" style="background:${s.bg};border-color:${s.bc};" title="${p.name}: prob=${p.prob}, ${trueLabel}, predicted ${predLabel}">
+      <div class="p-prob" style="color:${s.lc}">${Math.round(p.prob*100)}%</div>
+      <div class="p-truth" style="color:${s.lc}">${p.name}</div>
+      <div class="p-verdict" style="background:${s.vbg};color:${s.vc}">${p.type}</div>
+    </div>`;
+  }).join('');
+
+  const acc=Math.round((TP+TN)/PATS.length*100);
+  const prec=TP+FP>0?Math.round(TP/(TP+FP)*100):0;
+  const rec=TP+FN>0?Math.round(TP/(TP+FN)*100):0;
+
+  const metrics=[
+    {lbl:'Accuracy',val:acc+'%',explain:`${TP+TN} of ${PATS.length} patients correctly classified`,col:'var(--color-text-primary)',bg:'var(--color-background-secondary)'},
+    {lbl:'Precision',val:prec+'%',explain:`Of ${TP+FP} flagged positive, ${TP} were actually sick`,col:'#185FA5',bg:'#E6F1FB'},
+    {lbl:'Recall',val:rec+'%',explain:`Caught ${TP} of ${TP+FN} actually sick patients`,col:'#0F6E56',bg:'#E1F5EE'},
+    {lbl:'Missed sick (FN)',val:FN,explain:`${FN} sick patient${FN!==1?'s':''} sent home — dangerous!`,col:'#993C1D',bg:'#FAECE7'},
+  ];
+
+  document.getElementById('th2-metrics').innerHTML=metrics.map(m=>
+    `<div class="m2-card" style="background:${m.bg};">
+      <div class="m2-lbl">${m.lbl}</div>
+      <div class="m2-val" style="color:${m.col}">${m.val}</div>
+      <div class="m2-explain">${m.explain}</div>
+    </div>`
+  ).join('');
+
+  let tip='', tipBg='var(--color-background-secondary)', tipCol='var(--color-text-secondary)';
+  if(t<=0.25){
+    tip='⚠️ Very low threshold — you flag almost everyone. No sick patients are missed (good!), but many healthy people get false alarms.'; tipBg='#FAEEDA'; tipCol='#854F0B';
+  } else if(t<=0.45){
+    tip='This threshold catches most sick patients with only a few false alarms. Good for serious diseases where missing a case is costly.'; tipBg='#E1F5EE'; tipCol='#0F6E56';
+  } else if(t<=0.55){
+    tip='Default threshold (0.5). Balanced — but in medical settings, you usually want a lower threshold to avoid missing sick patients.'; tipBg='#E6F1FB'; tipCol='#185FA5';
+  } else if(t<=0.75){
+    tip='Higher threshold — fewer false alarms, but you risk missing sick patients. Precision goes up, recall goes down.'; tipBg='#FAEEDA'; tipCol='#854F0B';
+  } else {
+    tip='⚠️ Very high threshold — almost nobody is flagged. Sick patients are being missed. Only use this when false alarms are extremely costly.'; tipBg='#FAECE7'; tipCol='#993C1D';
+  }
+  const tipEl=document.getElementById('th2-tip');
+  tipEl.textContent=tip; tipEl.style.background=tipBg; tipEl.style.color=tipCol;
+}
+
+document.getElementById('th2-slider').addEventListener('input',th2render);
+th2render();
+</script>
