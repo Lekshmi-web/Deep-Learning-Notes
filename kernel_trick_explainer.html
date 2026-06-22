@@ -1,0 +1,178 @@
+
+<h2 class="sr-only">Kernel trick step-by-step explainer. Shows how data that cannot be separated by a straight line in 2D can be lifted into 3D space where a flat hyperplane cleanly separates it.</h2>
+<style>
+  .sv3 { padding:1rem 0; }
+  .sv3-intro { font-size:13px; color:var(--color-text-secondary); background:var(--color-background-secondary); border-radius:var(--border-radius-lg); padding:12px 16px; margin-bottom:16px; line-height:1.6; }
+  .sv3-intro b { color:var(--color-text-primary); font-weight:500; }
+  .sv3-steps { display:flex; gap:8px; margin-bottom:16px; flex-wrap:wrap; }
+  .sv3-step-btn { font-size:13px; padding:8px 18px; border-radius:var(--border-radius-lg); border:2px solid transparent; cursor:pointer; font-weight:500; transition:all 0.18s; background:var(--color-background-secondary); color:var(--color-text-secondary); border-color:var(--color-border-tertiary); }
+  .sv3-step-btn.active { background:#EEEDFE; color:#3C3489; border-color:#AFA9EC; }
+  #sv3-canvas { width:100%; height:300px; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); display:block; }
+  .sv3-explain { font-size:13px; padding:12px 16px; border-radius:var(--border-radius-md); margin-top:12px; line-height:1.6; }
+  .sv3-explain b { font-weight:500; }
+  .sv3-formula { font-family:var(--font-mono); font-size:12px; background:var(--color-background-secondary); color:var(--color-text-secondary); padding:8px 12px; border-radius:var(--border-radius-md); margin-top:8px; }
+</style>
+<div class="sv3">
+  <div class="sv3-intro">
+    <b>Problem:</b> The teal points form a ring around the coral points. No straight line in 2D can separate them. The <b>kernel trick</b> lifts the data into a higher dimension where a flat boundary works perfectly.
+  </div>
+  <div class="sv3-steps">
+    <button class="sv3-step-btn active" onclick="sv3Go(0,this)">Step 1 — 2D data (not separable)</button>
+    <button class="sv3-step-btn" onclick="sv3Go(1,this)">Step 2 — Apply kernel (lift to 3D)</button>
+    <button class="sv3-step-btn" onclick="sv3Go(2,this)">Step 3 — Separate with a plane</button>
+  </div>
+  <canvas id="sv3-canvas"></canvas>
+  <div class="sv3-explain" id="sv3-explain"></div>
+  <div class="sv3-formula" id="sv3-formula"></div>
+</div>
+<script>
+const c3=document.getElementById('sv3-canvas');
+const cx3=c3.getContext('2d');
+let dpr3=window.devicePixelRatio||1, sv3Step=0, sv3Anim=null;
+function isDark3(){ return window.matchMedia('(prefers-color-scheme:dark)').matches; }
+
+const RING_N=14, INNER_N=6;
+let ringPts=[], innerPts=[];
+
+function buildPts(){
+  ringPts=[]; innerPts=[];
+  for(let i=0;i<RING_N;i++){
+    const a=2*Math.PI*i/RING_N+(Math.random()-0.5)*0.2;
+    const r=0.30+(Math.random()-0.5)*0.04;
+    ringPts.push({ox:0.5+r*Math.cos(a), oy:0.5+r*Math.sin(a)*0.7});
+  }
+  for(let i=0;i<INNER_N;i++){
+    const a=2*Math.PI*i/INNER_N+(Math.random()-0.5)*0.3;
+    const r=0.10+(Math.random()-0.5)*0.04;
+    innerPts.push({ox:0.5+r*Math.cos(a), oy:0.5+r*Math.sin(a)*0.7});
+  }
+  ringPts.forEach(p=>{ p.z=Math.pow((p.ox-0.5)**2+(p.oy-0.5)**2,0.5)*3; });
+  innerPts.forEach(p=>{ p.z=Math.pow((p.ox-0.5)**2+(p.oy-0.5)**2,0.5)*3; });
+}
+
+function sv3Resize(){
+  const W=c3.parentElement.offsetWidth;
+  c3.width=W*dpr3; c3.height=300*dpr3;
+  cx3.scale(dpr3,dpr3); buildPts(); sv3Draw(sv3Step,1);
+}
+
+function project3D(fx,fy,fz,W,H,t){
+  const px=fx*W, py=fy*H;
+  const angle=0.4;
+  const px3=W*0.08+fx*W*0.55+fz*60*Math.cos(angle);
+  const py3=H*0.85-fy*H*0.55-fz*60*Math.sin(angle+0.6);
+  return {
+    x: px*(1-t)+px3*t,
+    y: py*(1-t)+py3*t
+  };
+}
+
+function sv3Draw(step,t=1){
+  const W=c3.width/dpr3, H=c3.height/dpr3;
+  cx3.clearRect(0,0,W,H);
+  const dark=isDark3();
+  const gridC=dark?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.05)';
+
+  if(step===0){
+    for(let x=0;x<W;x+=40){ cx3.beginPath(); cx3.moveTo(x,0); cx3.lineTo(x,H); cx3.strokeStyle=gridC; cx3.lineWidth=0.5; cx3.stroke(); }
+    for(let y=0;y<H;y+=40){ cx3.beginPath(); cx3.moveTo(0,y); cx3.lineTo(W,y); cx3.strokeStyle=gridC; cx3.lineWidth=0.5; cx3.stroke(); }
+    cx3.strokeStyle=dark?'rgba(255,255,255,0.2)':'rgba(0,0,0,0.2)'; cx3.lineWidth=1;
+    cx3.beginPath(); cx3.moveTo(W*0.08,H*0.88); cx3.lineTo(W*0.92,H*0.88); cx3.stroke();
+    cx3.beginPath(); cx3.moveTo(W*0.08,H*0.12); cx3.lineTo(W*0.08,H*0.88); cx3.stroke();
+    cx3.fillStyle=dark?'rgba(255,255,255,0.4)':'rgba(0,0,0,0.35)'; cx3.font='12px sans-serif';
+    cx3.textAlign='center'; cx3.fillText('x₁ (feature 1)',W*0.5,H*0.97);
+    cx3.save(); cx3.translate(16,H*0.5); cx3.rotate(-Math.PI/2); cx3.fillText('x₂ (feature 2)',0,0); cx3.restore();
+
+    cx3.strokeStyle='#E24B4A'; cx3.lineWidth=2; cx3.setLineDash([8,5]);
+    cx3.beginPath(); cx3.moveTo(W*0.1,H*0.5); cx3.lineTo(W*0.9,H*0.5); cx3.stroke(); cx3.setLineDash([]);
+    cx3.fillStyle='#A32D2D'; cx3.font='bold 11px sans-serif'; cx3.textAlign='right';
+    cx3.fillText('Any line fails',W*0.9,H*0.46);
+
+    [...ringPts,...innerPts].forEach(p=>{
+      const isRing=ringPts.includes(p);
+      cx3.beginPath(); cx3.arc(W*0.1+p.ox*(W*0.8),H*0.1+p.oy*(H*0.8),7,0,Math.PI*2);
+      cx3.fillStyle=isRing?'#1D9E75':'#D85A30'; cx3.fill();
+      cx3.strokeStyle=dark?'rgba(255,255,255,0.4)':'white'; cx3.lineWidth=2; cx3.stroke();
+    });
+
+  } else {
+    const all=[...ringPts.map(p=>({...p,c:'teal'})),...innerPts.map(p=>({...p,c:'coral'}))];
+    const cosA=Math.cos(0.35+sv3Step*0.1), sinA=Math.sin(0.35+sv3Step*0.1);
+
+    if(step===2){
+      const planeZ=0.55, planeAlpha=t*0.15;
+      cx3.fillStyle=dark?`rgba(83,74,183,${planeAlpha})`:`rgba(83,74,183,${planeAlpha})`;
+      const corners=[[0.05,0.1],[0.92,0.1],[0.92,0.88],[0.05,0.88]];
+      const projected=corners.map(([fx,fy])=>project3D(fx,fy,planeZ,W,H,t));
+      cx3.beginPath(); cx3.moveTo(projected[0].x,projected[0].y);
+      projected.slice(1).forEach(p=>cx3.lineTo(p.x,p.y));
+      cx3.closePath(); cx3.fill();
+      cx3.strokeStyle='#534AB7'; cx3.lineWidth=2; cx3.stroke();
+      if(t>0.7){
+        const lp=project3D(0.5,0.5,planeZ+0.05,W,H,1);
+        cx3.fillStyle='#3C3489'; cx3.font='bold 12px sans-serif'; cx3.textAlign='center';
+        cx3.fillText('Flat hyperplane separates them!',lp.x,lp.y-8);
+      }
+    }
+
+    all.sort((a,b)=>{
+      const dpa=project3D(a.ox,a.oy,a.z,W,H,t);
+      const dpb=project3D(b.ox,b.oy,b.z,W,H,t);
+      return dpa.y-dpb.y;
+    }).forEach(p=>{
+      const dp=project3D(p.ox,p.oy,p.z,W,H,t);
+      cx3.beginPath(); cx3.arc(dp.x,dp.y,7,0,Math.PI*2);
+      cx3.fillStyle=p.c==='teal'?'#1D9E75':'#D85A30'; cx3.fill();
+      cx3.strokeStyle=dark?'rgba(255,255,255,0.4)':'white'; cx3.lineWidth=2; cx3.stroke();
+    });
+
+    if(t>0.8){
+      const tC=dark?'rgba(255,255,255,0.4)':'rgba(0,0,0,0.35)';
+      cx3.fillStyle=tC; cx3.font='12px sans-serif'; cx3.textAlign='center';
+      cx3.fillText('x₁',W*0.55,H*0.97);
+      cx3.fillText('x₂',W*0.1,H*0.5);
+      cx3.fillText('z = x₁²+x₂² (new dimension)',W*0.82,H*0.25);
+    }
+  }
+}
+
+const EXPLAINS=[
+  {txt:'<b>Step 1 — The problem.</b> The teal points form a ring around the coral points. No straight line can separate them in 2D. The red dashed line shows any attempt fails — it always mixes classes.',bg:'#FAECE7',col:'#993C1D',formula:'2D features: x₁, x₂ — no linear separator exists'},
+  {txt:'<b>Step 2 — Apply the RBF kernel.</b> We add a new dimension: z = x₁² + x₂² (the squared distance from origin). Now the data is lifted into 3D space. Notice how the ring points (teal) rise to a higher z value than the inner points (coral).',bg:'#EEEDFE',col:'#3C3489',formula:'Kernel maps: (x₁, x₂) → (x₁, x₂, z) where z = x₁² + x₂²'},
+  {txt:'<b>Step 3 — A flat plane separates them.</b> In 3D, a simple flat hyperplane (the purple surface) cleanly separates the teal ring from the coral center. Project this plane back to 2D and it becomes the curved boundary you see in kernel SVM outputs.',bg:'#E1F5EE',col:'#085041',formula:'K(x,y) = exp(−γ||x−y||²) computes 3D dot product without ever going to 3D'},
+];
+
+let sv3T=0, sv3From=0, sv3To=0;
+
+function sv3Animate(targetStep){
+  cancelAnimationFrame(sv3Anim);
+  sv3From=sv3Step; sv3To=targetStep; sv3T=0;
+  function frame(){
+    sv3T=Math.min(1,sv3T+0.04);
+    const ease=sv3T<0.5?2*sv3T*sv3T:(1-Math.pow(-2*sv3T+2,2)/2);
+    if(sv3To===0) sv3Draw(0,1);
+    else if(sv3From===0&&sv3To>0) sv3Draw(sv3To,ease);
+    else sv3Draw(sv3To,1);
+    if(sv3T<1) sv3Anim=requestAnimationFrame(frame);
+    else{ sv3Step=sv3To; }
+  }
+  requestAnimationFrame(frame);
+}
+
+function sv3Go(step,btn){
+  document.querySelectorAll('.sv3-step-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  sv3Animate(step);
+  const e=EXPLAINS[step];
+  const el=document.getElementById('sv3-explain');
+  el.innerHTML=e.txt; el.style.background=e.bg; el.style.color=e.col;
+  document.getElementById('sv3-formula').textContent=e.formula;
+}
+
+window.addEventListener('resize',sv3Resize);
+sv3Resize();
+document.getElementById('sv3-explain').innerHTML=EXPLAINS[0].txt;
+document.getElementById('sv3-explain').style.background=EXPLAINS[0].bg;
+document.getElementById('sv3-explain').style.color=EXPLAINS[0].col;
+document.getElementById('sv3-formula').textContent=EXPLAINS[0].formula;
+</script>

@@ -1,0 +1,190 @@
+
+<h2 class="sr-only">SVM hyperplane and margin explorer. Drag the angle and position sliders to rotate and shift the decision boundary, and watch how the margin and support vectors update in real time.</h2>
+<style>
+  .sv1 { padding:1rem 0; }
+  .sv1-intro { font-size:13px; color:var(--color-text-secondary); background:var(--color-background-secondary); border-radius:var(--border-radius-lg); padding:12px 16px; margin-bottom:14px; line-height:1.6; }
+  .sv1-intro b { color:var(--color-text-primary); font-weight:500; }
+  .sv1-row { display:flex; align-items:center; gap:12px; margin-bottom:10px; flex-wrap:wrap; }
+  .sv1-row label { font-size:13px; color:var(--color-text-secondary); min-width:90px; }
+  .sv1-row input { flex:1; min-width:120px; }
+  .sv1-row .vval { font-size:14px; font-weight:500; color:var(--color-text-primary); min-width:44px; font-family:var(--font-mono); }
+  #sv1-canvas { width:100%; height:300px; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); display:block; }
+  .sv1-cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin-top:12px; }
+  .sv1-card { background:var(--color-background-secondary); border-radius:var(--border-radius-md); padding:10px 14px; }
+  .sv1-card .lbl { font-size:11px; color:var(--color-text-secondary); margin-bottom:3px; }
+  .sv1-card .val { font-size:20px; font-weight:500; color:var(--color-text-primary); }
+  .sv1-card .sub { font-size:11px; color:var(--color-text-secondary); margin-top:3px; line-height:1.4; }
+  .sv1-msg { font-size:13px; padding:10px 14px; border-radius:var(--border-radius-md); margin-top:10px; line-height:1.5; }
+</style>
+<div class="sv1">
+  <div class="sv1-intro">
+    The purple line is the <b>hyperplane (decision boundary)</b>. The dashed lines show the <b>margin</b>. The highlighted points sitting on the dashed lines are the <b>support vectors</b> — the only points that define the boundary. Drag the sliders to explore.
+  </div>
+  <div class="sv1-row">
+    <label>Angle</label>
+    <input type="range" min="-80" max="80" step="1" value="30" id="sv1-angle">
+    <span class="vval" id="sv1-angle-val">30°</span>
+  </div>
+  <div class="sv1-row">
+    <label>Position (b)</label>
+    <input type="range" min="-80" max="80" step="1" value="0" id="sv1-bias">
+    <span class="vval" id="sv1-bias-val">0</span>
+  </div>
+  <canvas id="sv1-canvas"></canvas>
+  <div class="sv1-cards" id="sv1-cards"></div>
+  <div class="sv1-msg" id="sv1-msg"></div>
+</div>
+<script>
+const c1 = document.getElementById('sv1-canvas');
+const cx1 = c1.getContext('2d');
+let dpr1 = window.devicePixelRatio || 1;
+
+const BLUE_PTS = [{x:0.22,y:0.28},{x:0.18,y:0.45},{x:0.30,y:0.20},{x:0.12,y:0.35},{x:0.25,y:0.55},{x:0.08,y:0.60}];
+const RED_PTS  = [{x:0.72,y:0.55},{x:0.78,y:0.38},{x:0.65,y:0.70},{x:0.82,y:0.65},{x:0.68,y:0.30},{x:0.88,y:0.48}];
+
+function isDark(){ return window.matchMedia('(prefers-color-scheme:dark)').matches; }
+
+function sv1Resize(){
+  const W = c1.parentElement.offsetWidth;
+  c1.width = W*dpr1; c1.height = 300*dpr1;
+  cx1.scale(dpr1,dpr1); sv1Draw();
+}
+
+function ptDist(px,py,nx,ny,bias){
+  return nx*px + ny*py + bias;
+}
+
+function sv1Draw(){
+  const angle = parseFloat(document.getElementById('sv1-angle').value);
+  const bias  = parseFloat(document.getElementById('sv1-bias').value)/200;
+  const W = c1.width/dpr1, H = c1.height/dpr1;
+  cx1.clearRect(0,0,W,H);
+  const dark = isDark();
+
+  const rad = angle * Math.PI/180;
+  const nx = Math.sin(rad), ny = -Math.cos(rad);
+
+  const gridC = dark?'rgba(255,255,255,0.05)':'rgba(0,0,0,0.05)';
+  for(let x=0;x<W;x+=40){ cx1.beginPath(); cx1.moveTo(x,0); cx1.lineTo(x,H); cx1.strokeStyle=gridC; cx1.lineWidth=0.5; cx1.stroke(); }
+  for(let y=0;y<H;y+=40){ cx1.beginPath(); cx1.moveTo(0,y); cx1.lineTo(W,y); cx1.strokeStyle=gridC; cx1.lineWidth=0.5; cx1.stroke(); }
+
+  function toSX(fx){ return fx*W; }
+  function toSY(fy){ return fy*H; }
+
+  const allPts = [...BLUE_PTS.map(p=>({...p,c:'blue'})), ...RED_PTS.map(p=>({...p,c:'red'}))];
+  allPts.forEach(p=>{
+    p.sx = toSX(p.x); p.sy = toSY(p.y);
+    p.d = nx*(p.x-0.5) + ny*(p.y-0.5) + bias;
+  });
+
+  const blueD = BLUE_PTS.map(p=> nx*(p.x-0.5)+ny*(p.y-0.5)+bias);
+  const redD  = RED_PTS.map(p=>  nx*(p.x-0.5)+ny*(p.y-0.5)+bias);
+  const minBlue = Math.min(...blueD);
+  const maxRed  = Math.max(...redD);
+  const margin  = minBlue - maxRed;
+
+  const blueMarginPts = BLUE_PTS.filter((_,i)=> Math.abs(blueD[i]-minBlue)<0.001);
+  const redMarginPts  = RED_PTS.filter((_,i)=>  Math.abs(redD[i]-maxRed)<0.001);
+
+  const svBlueOff = minBlue;
+  const svRedOff  = maxRed;
+  const midOff    = (svBlueOff+svRedOff)/2;
+
+  function drawLine(offset, style, dash, lw){
+    const cx0=0.5+nx*offset, cy0=0.5+ny*offset;
+    const tx=-ny, ty=nx;
+    const x1=toSX(cx0-tx*2), y1=toSY(cy0-ty*2);
+    const x2=toSX(cx0+tx*2), y2=toSY(cy0+ty*2);
+    cx1.beginPath(); cx1.moveTo(x1,y1); cx1.lineTo(x2,y2);
+    cx1.strokeStyle=style; cx1.lineWidth=lw;
+    if(dash) cx1.setLineDash([6,5]); else cx1.setLineDash([]);
+    cx1.stroke(); cx1.setLineDash([]);
+  }
+
+  const marginOk = margin > 0.02;
+
+  if(marginOk){
+    const fillPoints = [];
+    const tx=-ny, ty=nx;
+    const steps=[-2,-1,0,1,2];
+    steps.forEach(s=>{
+      const off=svBlueOff, cx0=0.5+nx*off+tx*s, cy0=0.5+ny*off+ty*s;
+      fillPoints.push([toSX(cx0),toSY(cy0)]);
+    });
+    cx1.beginPath();
+    const p0x=toSX(0.5+nx*svBlueOff-tx*2), p0y=toSY(0.5+ny*svBlueOff-ty*2);
+    const p1x=toSX(0.5+nx*svBlueOff+tx*2), p1y=toSY(0.5+ny*svBlueOff+ty*2);
+    const p2x=toSX(0.5+nx*svRedOff+tx*2),  p2y=toSY(0.5+ny*svRedOff+ty*2);
+    const p3x=toSX(0.5+nx*svRedOff-tx*2),  p3y=toSY(0.5+ny*svRedOff-ty*2);
+    cx1.moveTo(p0x,p0y); cx1.lineTo(p1x,p1y); cx1.lineTo(p2x,p2y); cx1.lineTo(p3x,p3y);
+    cx1.closePath();
+    cx1.fillStyle = dark?'rgba(83,74,183,0.1)':'rgba(83,74,183,0.07)';
+    cx1.fill();
+  }
+
+  drawLine(midOff,'#534AB7',false,2.5);
+  if(marginOk){
+    drawLine(svBlueOff,'#1D9E75',true,1.5);
+    drawLine(svRedOff,'#D85A30',true,1.5);
+  }
+
+  allPts.forEach(p=>{
+    const isSV = (p.c==='blue' && Math.abs(p.d - svBlueOff - (midOff-midOff))<0.001 && marginOk) ||
+                 (p.c==='red'  && Math.abs(p.d - svRedOff  - (midOff-midOff))<0.001 && marginOk);
+    cx1.beginPath(); cx1.arc(p.sx,p.sy,7,0,Math.PI*2);
+    cx1.fillStyle = p.c==='blue'?'#1D9E75':'#D85A30';
+    cx1.fill();
+    cx1.strokeStyle = dark?'rgba(255,255,255,0.4)':'white';
+    cx1.lineWidth=2; cx1.stroke();
+  });
+
+  const allBlueSV = BLUE_PTS.filter((_,i)=> Math.abs(blueD[i]-minBlue)<0.005);
+  const allRedSV  = RED_PTS.filter((_,i)=>  Math.abs(redD[i]-maxRed)<0.005);
+
+  [...allBlueSV.map(p=>({...p,c:'blue'})),...allRedSV.map(p=>({...p,c:'red'}))].forEach(p=>{
+    cx1.beginPath(); cx1.arc(toSX(p.x),toSY(p.y),12,0,Math.PI*2);
+    cx1.strokeStyle=p.c==='blue'?'#1D9E75':'#D85A30';
+    cx1.lineWidth=2.5; cx1.stroke();
+    cx1.fillStyle=p.c==='blue'?'#085041':'#712B13';
+    cx1.font='bold 10px sans-serif'; cx1.textAlign='center';
+    cx1.fillText('SV',toSX(p.x),toSY(p.y)+4);
+  });
+
+  const lx=W-100, ly=18;
+  [[`#1D9E75`,'Teal = class A'],[`#D85A30`,'Coral = class B'],['#534AB7','Hyperplane'],].forEach(([col,lbl],i)=>{
+    cx1.beginPath(); cx1.arc(lx,ly+i*20,5,0,Math.PI*2);
+    cx1.fillStyle=col; cx1.fill();
+    cx1.fillStyle=dark?'rgba(255,255,255,0.5)':'rgba(0,0,0,0.4)';
+    cx1.font='11px sans-serif'; cx1.textAlign='left';
+    cx1.fillText(lbl,lx+10,ly+i*20+4);
+  });
+
+  const displayMargin = Math.max(0, margin*300).toFixed(1);
+  document.getElementById('sv1-cards').innerHTML=`
+    <div class="sv1-card"><div class="lbl">Margin width</div><div class="val">${displayMargin}px</div><div class="sub">Wider = more robust model</div></div>
+    <div class="sv1-card"><div class="lbl">Support vectors</div><div class="val">${allBlueSV.length+allRedSV.length}</div><div class="sub">Points sitting on margin lines</div></div>
+    <div class="sv1-card"><div class="lbl">Boundary angle</div><div class="val">${angle}°</div><div class="sub">Rotation of hyperplane</div></div>
+    <div class="sv1-card"><div class="lbl">Separation</div><div class="val">${marginOk?'Good':'Overlap'}</div><div class="sub">${marginOk?'Classes separated':'Classes overlap here'}</div></div>
+  `;
+  const msg = document.getElementById('sv1-msg');
+  if(!marginOk){
+    msg.textContent='The classes are overlapping — the margin has collapsed. SVM would need a soft margin (allow some errors) or a kernel to separate these.';
+    msg.style.background='#FAECE7'; msg.style.color='#993C1D';
+  } else if(margin>0.15){
+    msg.textContent='Great separation! Wide margin means the model is confident and will generalise well to new data.';
+    msg.style.background='#E1F5EE'; msg.style.color='#085041';
+  } else {
+    msg.textContent='The margin (shaded band) is the gap SVM maximizes. Support vectors (circled SV) are the only points that define it — all others could be removed with no effect.';
+    msg.style.background='var(--color-background-secondary)'; msg.style.color='var(--color-text-secondary)';
+  }
+}
+
+document.getElementById('sv1-angle').addEventListener('input',function(){
+  document.getElementById('sv1-angle-val').textContent=this.value+'°'; sv1Draw();
+});
+document.getElementById('sv1-bias').addEventListener('input',function(){
+  document.getElementById('sv1-bias-val').textContent=this.value; sv1Draw();
+});
+window.addEventListener('resize',sv1Resize);
+sv1Resize();
+</script>

@@ -1,0 +1,226 @@
+
+<h2 class="sr-only">SVM soft margin and C parameter explorer. Adjust C to see how margin width and misclassification tolerance change.</h2>
+<style>
+  .sv2 { padding:1rem 0; }
+  .sv2-intro { font-size:13px; color:var(--color-text-secondary); background:var(--color-background-secondary); border-radius:var(--border-radius-lg); padding:12px 16px; margin-bottom:14px; line-height:1.6; }
+  .sv2-intro b { color:var(--color-text-primary); font-weight:500; }
+  .sv2-ctrl { display:flex; align-items:center; gap:12px; margin-bottom:6px; flex-wrap:wrap; }
+  .sv2-ctrl label { font-size:13px; color:var(--color-text-secondary); min-width:110px; }
+  .sv2-ctrl input { flex:1; min-width:120px; }
+  .sv2-cval { font-size:18px; font-weight:500; color:#534AB7; min-width:40px; }
+  .sv2-hint { display:flex; justify-content:space-between; font-size:11px; color:var(--color-text-secondary); margin-bottom:12px; }
+  #sv2c-canvas { width:100%; height:300px; border:0.5px solid var(--color-border-tertiary); border-radius:var(--border-radius-lg); display:block; }
+  .sv2-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:10px; margin-top:12px; }
+  .sv2-card { border-radius:var(--border-radius-md); padding:10px 14px; }
+  .sv2-card .lbl { font-size:11px; margin-bottom:3px; }
+  .sv2-card .val { font-size:20px; font-weight:500; }
+  .sv2-card .sub { font-size:11px; margin-top:3px; line-height:1.4; }
+  .sv2-msg { font-size:13px; padding:10px 14px; border-radius:var(--border-radius-md); margin-top:10px; line-height:1.5; }
+</style>
+<div class="sv2">
+  <div class="sv2-intro">
+    Real data is messy — some points end up on the wrong side. The <b>C parameter</b> controls how much the model tolerates mistakes. <b>Low C</b> = wide forgiving margin. <b>High C</b> = narrow strict margin that tries to get every point right.
+  </div>
+  <div class="sv2-ctrl">
+    <label>C parameter =</label>
+    <input type="range" min="1" max="100" step="1" value="10" id="sv2c-slider">
+    <span class="sv2-cval" id="sv2c-out">10</span>
+  </div>
+  <div class="sv2-hint">
+    <span>C=1 — wide margin, tolerant</span>
+    <span>C=50 — balanced</span>
+    <span>C=100 — narrow, strict</span>
+  </div>
+  <canvas id="sv2c-canvas"></canvas>
+  <div class="sv2-grid" id="sv2c-cards"></div>
+  <div class="sv2-msg" id="sv2c-msg"></div>
+</div>
+<script>
+var cv2 = document.getElementById('sv2c-canvas');
+var ctx2 = cv2.getContext('2d');
+var d2 = window.devicePixelRatio || 1;
+
+var BP = [
+  {x:0.15,y:0.22},{x:0.20,y:0.40},{x:0.28,y:0.17},
+  {x:0.12,y:0.52},{x:0.35,y:0.32},{x:0.09,y:0.36},
+  {x:0.42,y:0.48}
+];
+var RP = [
+  {x:0.68,y:0.58},{x:0.76,y:0.38},{x:0.60,y:0.70},
+  {x:0.80,y:0.55},{x:0.72,y:0.25},{x:0.86,y:0.42}
+];
+var OL = [
+  {x:0.50,y:0.30,c:'red'},
+  {x:0.46,y:0.60,c:'blue'}
+];
+
+function dark2(){ return window.matchMedia('(prefers-color-scheme:dark)').matches; }
+
+function resize2(){
+  var W = cv2.parentElement.offsetWidth;
+  cv2.width = W * d2;
+  cv2.height = 300 * d2;
+  ctx2.scale(d2, d2);
+  draw2();
+}
+
+function draw2(){
+  var cVal = parseInt(document.getElementById('sv2c-slider').value);
+  var W = cv2.width / d2;
+  var H = cv2.height / d2;
+  ctx2.clearRect(0, 0, W, H);
+  var dk = dark2();
+
+  var gc = dk ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)';
+  for(var gx=0; gx<W; gx+=40){
+    ctx2.beginPath(); ctx2.moveTo(gx,0); ctx2.lineTo(gx,H);
+    ctx2.strokeStyle=gc; ctx2.lineWidth=0.5; ctx2.stroke();
+  }
+  for(var gy=0; gy<H; gy+=40){
+    ctx2.beginPath(); ctx2.moveTo(0,gy); ctx2.lineTo(W,gy);
+    ctx2.strokeStyle=gc; ctx2.lineWidth=0.5; ctx2.stroke();
+  }
+
+  var t = cVal / 100;
+  var mHalf = 0.18 - t * 0.13;
+  var bound = 0.50;
+  var bLine = bound - mHalf;
+  var rLine = bound + mHalf;
+
+  function sx(f){ return f * W; }
+  function sy(f){ return f * H; }
+
+  function vline(fx, color, dash, lw){
+    ctx2.beginPath();
+    ctx2.moveTo(sx(fx), 0);
+    ctx2.lineTo(sx(fx), H);
+    ctx2.strokeStyle = color;
+    ctx2.lineWidth = lw;
+    if(dash){ ctx2.setLineDash([6,5]); } else { ctx2.setLineDash([]); }
+    ctx2.stroke();
+    ctx2.setLineDash([]);
+  }
+
+  ctx2.fillStyle = dk ? 'rgba(83,74,183,0.10)' : 'rgba(83,74,183,0.07)';
+  ctx2.fillRect(sx(bLine), 0, sx(rLine) - sx(bLine), H);
+
+  vline(bound, '#534AB7', false, 2.5);
+  vline(bLine, '#1D9E75', true, 1.8);
+  vline(rLine, '#D85A30', true, 1.8);
+
+  var mPx = (sx(rLine) - sx(bLine)).toFixed(0);
+  ctx2.fillStyle = dk ? 'rgba(83,74,183,0.55)' : 'rgba(83,74,183,0.45)';
+  ctx2.font = 'bold 12px sans-serif';
+  ctx2.textAlign = 'center';
+  ctx2.fillText('Margin = ' + mPx + 'px wide', sx(0.5), H / 2 + 6);
+
+  ctx2.fillStyle = '#3C3489';
+  ctx2.font = 'bold 11px sans-serif';
+  ctx2.textAlign = 'center';
+  ctx2.fillText('hyperplane', sx(bound), 16);
+
+  ctx2.fillStyle = '#085041';
+  ctx2.textAlign = 'left';
+  ctx2.font = '11px sans-serif';
+  ctx2.fillText('margin boundary', sx(bLine) + 3, H - 8);
+
+  ctx2.fillStyle = '#993C1D';
+  ctx2.textAlign = 'right';
+  ctx2.fillText('margin boundary', sx(rLine) - 3, H - 8);
+
+  BP.forEach(function(p){
+    ctx2.beginPath();
+    ctx2.arc(sx(p.x), sy(p.y), 7, 0, Math.PI*2);
+    ctx2.fillStyle = '#1D9E75';
+    ctx2.fill();
+    ctx2.strokeStyle = dk ? 'rgba(255,255,255,0.4)' : 'white';
+    ctx2.lineWidth = 2;
+    ctx2.stroke();
+  });
+
+  RP.forEach(function(p){
+    ctx2.beginPath();
+    ctx2.arc(sx(p.x), sy(p.y), 7, 0, Math.PI*2);
+    ctx2.fillStyle = '#D85A30';
+    ctx2.fill();
+    ctx2.strokeStyle = dk ? 'rgba(255,255,255,0.4)' : 'white';
+    ctx2.lineWidth = 2;
+    ctx2.stroke();
+  });
+
+  var numViol = cVal < 25 ? 2 : cVal < 55 ? 1 : 0;
+
+  for(var vi=0; vi<numViol; vi++){
+    var op = OL[vi];
+    ctx2.beginPath();
+    ctx2.arc(sx(op.x), sy(op.y), 8, 0, Math.PI*2);
+    ctx2.fillStyle = op.c === 'blue' ? '#1D9E75' : '#D85A30';
+    ctx2.fill();
+    ctx2.strokeStyle = '#BA7517';
+    ctx2.lineWidth = 2.5;
+    ctx2.stroke();
+    ctx2.fillStyle = '#412402';
+    ctx2.font = 'bold 11px sans-serif';
+    ctx2.textAlign = 'center';
+    ctx2.fillText('!', sx(op.x), sy(op.y) + 4);
+  }
+
+  var marginLabel, overfitLabel, toleranceLabel;
+  if(cVal <= 30){
+    marginLabel = 'Wide'; overfitLabel = 'Low'; toleranceLabel = 'Tolerant';
+  } else if(cVal <= 65){
+    marginLabel = 'Moderate'; overfitLabel = 'Medium'; toleranceLabel = 'Balanced';
+  } else {
+    marginLabel = 'Narrow'; overfitLabel = 'High'; toleranceLabel = 'Strict';
+  }
+
+  var cardsEl = document.getElementById('sv2c-cards');
+  cardsEl.innerHTML = '';
+
+  function makeCard(bg, lbCol, label, valStr, subStr, valCol){
+    var d = document.createElement('div');
+    d.className = 'sv2-card';
+    d.style.background = bg;
+    d.innerHTML =
+      '<div class="lbl" style="color:' + lbCol + ';">' + label + '</div>' +
+      '<div class="val" style="color:' + valCol + ';">' + valStr + '</div>' +
+      '<div class="sub" style="color:' + lbCol + ';">' + subStr + '</div>';
+    cardsEl.appendChild(d);
+  }
+
+  makeCard('#EEEDFE','#3C3489','C value', String(cVal), toleranceLabel, '#3C3489');
+  makeCard('#E1F5EE','#085041','Margin width', mPx + 'px', marginLabel + ' margin', '#0F6E56');
+  makeCard(
+    numViol > 0 ? '#FAEEDA' : '#E1F5EE',
+    numViol > 0 ? '#633806' : '#085041',
+    'Violations (!)',
+    String(numViol),
+    numViol === 0 ? 'No misclassifications' : numViol + ' point(s) inside margin',
+    numViol > 0 ? '#633806' : '#0F6E56'
+  );
+  makeCard('var(--color-background-secondary)','var(--color-text-secondary)','Overfit risk', overfitLabel, cVal > 65 ? 'Memorising data' : 'Generalising well', 'var(--color-text-primary)');
+
+  var msgEl = document.getElementById('sv2c-msg');
+  if(cVal <= 25){
+    msgEl.textContent = 'Low C — the model is forgiving. Wide margin allows some points (shown with !) to land inside or across it. Generalises well to new data. Best when data has noise.';
+    msgEl.style.background = '#E1F5EE';
+    msgEl.style.color = '#085041';
+  } else if(cVal <= 60){
+    msgEl.textContent = 'Balanced C — moderate tolerance. A good default starting point for most SVM problems. Neither too strict nor too forgiving.';
+    msgEl.style.background = 'var(--color-background-secondary)';
+    msgEl.style.color = 'var(--color-text-secondary)';
+  } else {
+    msgEl.textContent = 'High C — the model is strict. Almost no violations allowed, so the margin shrinks. Works great on training data but risks overfitting — may fail on new unseen data.';
+    msgEl.style.background = '#FAECE7';
+    msgEl.style.color = '#993C1D';
+  }
+}
+
+document.getElementById('sv2c-slider').addEventListener('input', function(){
+  document.getElementById('sv2c-out').textContent = this.value;
+  draw2();
+});
+
+window.addEventListener('resize', resize2);
+resize2();
+</script>
